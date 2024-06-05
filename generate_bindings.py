@@ -10,7 +10,7 @@ import textwrap
 import xml.etree.ElementTree as ElementTree
 from dataclasses import dataclass
 
-CONFIG_FILE_PATH = "../build/docs/public_api/xml/"
+CONFIG_FILE_PATH = "../roc-toolkit/build/docs/public_api/xml/"
 
 ROC_JAVA_BASE_PATH = "../../roc-java"
 ROC_GO_BASE_PATH = "../../roc-go"
