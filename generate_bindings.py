@@ -2,6 +2,7 @@
 
 import argparse
 import os
+import re
 import string
 import subprocess
 import sys
@@ -9,7 +10,7 @@ import textwrap
 import xml.etree.ElementTree as ElementTree
 from dataclasses import dataclass
 
-CONFIG_FILE_PATH = "../build/docs/public_api/xml/config_8h.xml"
+CONFIG_FILE_PATH = "../build/docs/public_api/xml/"
 
 ROC_JAVA_BASE_PATH = "../../roc-java"
 ROC_GO_BASE_PATH = "../../roc-go"
@@ -18,9 +19,24 @@ ROC_JAVA_PACKAGE = "org.rocstreaming.roctoolkit"
 
 ODD_PREFIXES = {'roc_clock_source': 'ROC_CLOCK_', 'roc_protocol': 'ROC_PROTO_'}
 
+JAVA_TYPE_MAP = {
+    "unsigned int": "int",
+    "unsigned long long": "long",
+}
+
+STRUCTS = [
+    'structroc__context__config.xml',
+    'structroc__receiver__config.xml',
+    'structroc__sender__config.xml',
+]
+
+
+def to_pascal_case(name):
+    return ''.join(x.capitalize() for x in name.split('_'))
+
 
 def to_camel_case(name):
-    return ''.join(x.capitalize() for x in name.split('_'))
+    return name[0].lower() + to_pascal_case(name)[1:]
 
 
 @dataclass
@@ -49,24 +65,39 @@ class EnumDefinition:
     doc: DocComment
 
 
-class EnumGenerator:
+@dataclass
+class StructField:
+    name: string
+    type: string
+    doc: DocComment
+
+
+@dataclass
+class StructDefinition:
+    name: string
+    fields: list[StructField]
+    doc: DocComment
+
+
+class Generator:
     def generate_enum(self, enum_definition: EnumDefinition, autogen_comment: list[string]):
         raise NotImplementedError
 
+    def generate_struct(self, struct_definition: StructDefinition, autogen_comment: list[string]):
+        raise NotImplementedError
 
-class JavaEnumGenerator(EnumGenerator):
+
+class JavaGenerator(Generator):
 
     def __init__(self, base_path: string, name_prefixes: dict[str, str]):
         self.base_path = base_path
         self.name_prefixes: dict[str, str] = name_prefixes
 
     def generate_enum(self, enum_definition: EnumDefinition, autogen_comment: list[string]):
-        java_name = self.get_java_enum_name(enum_definition.name)
+        java_name = self.get_java_class_name(enum_definition.name)
         enum_values = enum_definition.values
 
-        enum_file_path = (self.base_path + "/src/main/java/"
-                          + ROC_JAVA_PACKAGE.replace(".", "/") + "/" + java_name + ".java")
-        enum_file = open(enum_file_path, "w")
+        enum_file = open(self.get_file_path(java_name), "w")
 
         for line in autogen_comment:
             enum_file.write("// " + line + "\n")
@@ -92,18 +123,72 @@ class JavaEnumGenerator(EnumGenerator):
 
         enum_file.close()
 
+    def generate_struct(self, struct: StructDefinition, autogen_comment: list[string]):
+        java_name = self.get_java_class_name(struct.name)
+        file = open(self.get_file_path(java_name), "w")
+
+        for line in autogen_comment:
+            file.write("// " + line + "\n")
+        file.write("\n")
+        file.write("\n")
+        file.write(f"package {ROC_JAVA_PACKAGE};\n\n")
+        file.write("import lombok.*;\n\n")
+
+        file.write(self.format_javadoc(struct.doc, 0))
+        file.write("@Getter\n")
+        file.write("@Builder(builderClassName = \"Builder\", toBuilder = true)\n")
+        file.write("@ToString\n")
+        file.write("@EqualsAndHashCode\n")
+        file.write("public class " + java_name + " {\n")
+
+        for f in struct.fields:
+            file.write("\n")
+            file.write(self.format_javadoc(f.doc, 4))
+
+            field_type = self.get_java_class_name(f.type) if f.type.startswith('roc') else JAVA_TYPE_MAP.get(f.type, f.type)
+            file.write(f"    private {field_type} {to_camel_case(f.name)};\n")
+
+        file.write("\n")
+        file.write(f"    public static {java_name}.Builder builder() {{\n")
+        file.write(f"        return new ValidationBuilder();\n")
+        file.write("    }\n")
+
+        file.write("\n")
+        file.write(f"    private static class ValidationBuilder extends {java_name}.Builder {{\n")
+        file.write(f"        @Override\n")
+        file.write(f"        public {java_name} build() {{\n")
+        for f in struct.fields:
+            field_name = to_camel_case(f.name)
+            if (f.type.startswith('roc')):
+                file.write(f"            Check.notNull(super.{field_name}, \"{field_name}\");\n")
+            else:
+                file.write(f"            Check.notNegative(super.{field_name}, \"{field_name}\");\n")
+        file.write(f"            return super.build();\n")
+        file.write("        }\n")
+        file.write("    }\n")
+
+        file.write("}\n")
+
+
     def get_java_enum_value(self, enum_name, enum_value_name):
         prefix = self.name_prefixes.get(enum_name)
         return enum_value_name.removeprefix(prefix)
 
     def get_java_enum_name(self, roc_enum_name):
         return to_camel_case(roc_enum_name.removeprefix('roc_'))
+    def get_java_class_name(self, roc_name):
+        return to_pascal_case(roc_name.removeprefix('roc_'))
+
+    def get_file_path(self, java_name):
+        return (self.base_path + "/src/main/java/"
+                + ROC_JAVA_PACKAGE.replace(".", "/") + "/" + java_name + ".java")
+
 
     def get_java_link(self, roc_enum_value_name):
         for roc_enum_name in self.name_prefixes:
             prefix = self.name_prefixes.get(roc_enum_name)
             if roc_enum_value_name.startswith(prefix):
-                java_type = self.get_java_enum_name(roc_enum_name)
+                java_type = self.get_java_class_name(roc_enum_name)
                 java_enum = self.get_java_enum_value(roc_enum_name, roc_enum_value_name)
                 return f"{java_type}#{java_enum}"
 
@@ -136,7 +221,7 @@ class JavaEnumGenerator(EnumGenerator):
             if t == "text":
                 result.append(item.text)
             elif t == "ref" or t == "code":
-                result.append(self.ref_to_string(item.text))
+                result.append(self.ref_to_string(item.text) or item.text)
             elif t == "list":
                 ul = "<ul>\n"
                 for li in item.values:
@@ -150,17 +235,17 @@ class JavaEnumGenerator(EnumGenerator):
     def ref_to_string(self, ref_value):
         """
         :param ref_value: enum_value or enum_type, e.g. roc_endpoint or ROC_INTERFACE_CONSOLIDATED
-        :return: java link javadoc
+        :return: java link javadoc or None if not found
         """
         if ref_value.startswith("roc_"):
-            java_name = self.get_java_enum_name(ref_value)
+            java_name = self.get_java_class_name(ref_value)
             return "{@link " + java_name + "}"
 
         link = self.get_java_link(ref_value)
-        return "{@link " + link + "}"
+        return "{@link " + link + "}" if link else None
 
 
-class GoEnumGenerator(EnumGenerator):
+class GoGenerator(Generator):
 
     def __init__(self, base_path: string, name_prefixes: dict[str, str]):
         self.base_path = base_path
@@ -173,7 +258,7 @@ class GoEnumGenerator(EnumGenerator):
         enum_file_path = self.base_path + "/roc/" + go_name + ".go"
         enum_file = open(enum_file_path, "w")
 
-        go_type_name = to_camel_case(go_name)
+        go_type_name = to_pascal_case(go_name)
         for line in autogen_comment:
             enum_file.write("// " + line + "\n")
         enum_file.write("\n")
@@ -181,7 +266,7 @@ class GoEnumGenerator(EnumGenerator):
         enum_file.write(self.format_comment(enum_definition.doc, ""))
         enum_file.write("//\n")
         roc_prefix = self.name_prefixes[enum_definition.name]
-        go_prefix = to_camel_case(roc_prefix.lower().removeprefix('roc_').removesuffix('_'))
+        go_prefix = to_pascal_case(roc_prefix.lower().removeprefix('roc_').removesuffix('_'))
         enum_file.write(
             f"//go:generate stringer -type {go_type_name} -trimprefix {go_prefix} -output {go_name}_string.go\n")
         enum_file.write(f"type {go_type_name} int\n\n")
@@ -189,7 +274,7 @@ class GoEnumGenerator(EnumGenerator):
         enum_file.write("const (\n")
 
         for i, enum_value in enumerate(enum_values):
-            go_enum_value = to_camel_case(enum_value.name.lower().removeprefix('roc_'))
+            go_enum_value = to_pascal_case(enum_value.name.lower().removeprefix('roc_'))
 
             if i != 0:
                 enum_file.write("\n")
@@ -199,6 +284,9 @@ class GoEnumGenerator(EnumGenerator):
         enum_file.write(")\n")
 
         enum_file.close()
+
+    def generate_struct(self, struct_definition: StructDefinition, autogen_comment: list[string]):
+        print(f"Generating struct {struct_definition.name} - GENERATION NOT IMPLEMENTED YET")
 
     def format_comment(self, doc: DocComment, indent: string):
         indent_line = indent + "// "
@@ -243,20 +331,21 @@ class GoEnumGenerator(EnumGenerator):
         :return: go value
         """
         if ref_value.startswith("roc_"):
-            return to_camel_case(ref_value.removeprefix('roc_'))
+            return to_pascal_case(ref_value.removeprefix('roc_'))
 
-        return to_camel_case(ref_value.lower().removeprefix('roc_'))
+        return to_pascal_case(ref_value.lower().removeprefix('roc_'))
 
 
-def parse_config_xml():
+def parse_config_xml(name):
+    filepath = CONFIG_FILE_PATH + name
     try:
-        tree = ElementTree.parse(CONFIG_FILE_PATH)
+        tree = ElementTree.parse(filepath)
         return tree.getroot()
     except FileNotFoundError:
-        print(f"File not found: {CONFIG_FILE_PATH}", file=sys.stderr)
+        print(f"File not found: {filepath}", file=sys.stderr)
         exit(1)
     except ElementTree.ParseError:
-        print(f"Error parsing XML file: {CONFIG_FILE_PATH}", file=sys.stderr)
+        print(f"Error parsing XML file: {filepath}", file=sys.stderr)
         exit(1)
 
 
@@ -306,6 +395,7 @@ def parse_doc_elem(elem: ElementTree.Element) -> list[DocItem]:
     text = strip_text(elem.text)
     if tag == "para":
         if text:
+            # text = re.sub(' *\n *', ' ', text)
             items.append(DocItem("text", text))
     elif tag == "ref":
         if text:
@@ -334,6 +424,39 @@ def parse_doc_elem(elem: ElementTree.Element) -> list[DocItem]:
     return items
 
 
+def get_structs() -> list[StructDefinition]:
+    struct_definitions = []
+
+    for struct in STRUCTS:
+        el = parse_config_xml(struct)
+        compound = el.find('.//compounddef')
+
+        name = compound.find('compoundname').text
+        doc = parse_doc(compound)
+        fields = []
+
+        print(f"found struct in docs: {name}")
+        for member_def in compound.findall('sectiondef/memberdef[@kind="variable"]'):
+            field_name = member_def.find('name').text
+            field_type = get_struct_type(member_def.find('type'))
+            field_doc = parse_doc(member_def)
+            fields.append(StructField(field_name, field_type, field_doc))
+
+        struct_definitions.append(StructDefinition(name, fields, doc))
+    return struct_definitions
+
+
+def get_struct_type(type_def):
+    """
+    type_def could be <type><ref refid="config_8h_1a5671173735634f14066ec064a909f03b" kindref="member">roc_resampler_backend</ref></type>
+    or just <type>unsigned int</type>
+    """
+    ref = type_def.find('ref')
+    if ref is not None:
+        return type_def.find('ref').text
+    return type_def.text
+
+
 def get_name_prefixes(enum_definitions):
     name_prefixes = {}
     for enum_definition in enum_definitions:
@@ -343,7 +466,9 @@ def get_name_prefixes(enum_definitions):
     return name_prefixes
 
 
-def generate_enums(generator_construct, output_dir, name_prefixes, enum_definitions: list[EnumDefinition]):
+def generate(generator_construct, output_dir, name_prefixes,
+             enum_definitions: list[EnumDefinition],
+             struct_definitions: list[StructDefinition]):
     if not os.path.isdir(output_dir):
         print(f"Directory does not exist: {output_dir}. Can't generate enums {generator_construct.__name__}",
               file=sys.stderr)
@@ -355,6 +480,8 @@ def generate_enums(generator_construct, output_dir, name_prefixes, enum_definiti
     generator = generator_construct(output_dir, name_prefixes)
     for enum_definition in enum_definitions:
         generator.generate_enum(enum_definition, autogen_comment)
+    for struct_definition in struct_definitions:
+        generator.generate_struct(struct_definition, autogen_comment)
 
 
 def main():
@@ -370,15 +497,15 @@ def main():
 
     args = parser.parse_args()
 
-    xml_doc = parse_config_xml()
-    enum_definitions = get_enums(xml_doc)
+    enum_definitions = get_enums(parse_config_xml('config_8h.xml'))
+    struct_definitions = get_structs()
     name_prefixes = get_name_prefixes(enum_definitions)
 
     if args.type == "all" or args.type == "java":
-        generate_enums(JavaEnumGenerator, args.java_output_dir, name_prefixes, enum_definitions)
+        generate(JavaGenerator, args.java_output_dir, name_prefixes, enum_definitions, struct_definitions)
 
     if args.type == "all" or args.type == "go":
-        generate_enums(GoEnumGenerator, args.go_output_dir, name_prefixes, enum_definitions)
+        generate(GoGenerator, args.go_output_dir, name_prefixes, enum_definitions, struct_definitions)
 
 
 if __name__ == '__main__':
