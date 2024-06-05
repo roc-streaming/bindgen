@@ -24,6 +24,15 @@ JAVA_TYPE_MAP = {
     "unsigned long long": "long",
 }
 
+GO_TYPE_MAP = {
+    "unsigned int": "uint32",
+    "int": "int32",
+    "unsigned long": "uint32",
+    "long": "int32",
+    "unsigned long long": "uint64",
+    "long long": "int64",
+}
+
 STRUCTS = [
     'structroc__context__config.xml',
     'structroc__receiver__config.xml',
@@ -286,7 +295,36 @@ class GoGenerator(Generator):
         enum_file.close()
 
     def generate_struct(self, struct_definition: StructDefinition, autogen_comment: list[string]):
-        print(f"Generating struct {struct_definition.name} - GENERATION NOT IMPLEMENTED YET")
+        go_name = struct_definition.name.removeprefix('roc_')
+        struct_fields = struct_definition.fields
+
+        struct_file_path = self.base_path + "/roc/" + go_name + ".go"
+        struct_file = open(struct_file_path, "w")
+
+        go_type_name = to_pascal_case(go_name)
+        for line in autogen_comment:
+            struct_file.write("// " + line + "\n")
+        struct_file.write("\n")
+        struct_file.write("package roc\n\n")
+        struct_file.write(self.format_comment(struct_definition.doc, ""))
+        struct_file.write("//\n")
+
+        struct_file.write(f"type {go_type_name} struct {{\n")
+
+        for i, struct_field in enumerate(struct_fields):
+            field_name = to_pascal_case(struct_field.name.lower().removeprefix('roc_'))
+            field_type = to_pascal_case(struct_field.type.removeprefix('roc_')) \
+                if struct_field.type.startswith('roc') \
+                   else GO_TYPE_MAP.get(struct_field.type, struct_field.type)
+
+            if i != 0:
+                struct_file.write("\n")
+            struct_file.write(self.format_comment(struct_field.doc, "\t"))
+            struct_file.write(f"\t{field_name} {field_type}\n")
+
+        struct_file.write("}\n")
+
+        struct_file.close()
 
     def format_comment(self, doc: DocComment, indent: string):
         indent_line = indent + "// "
@@ -457,10 +495,14 @@ def get_struct_type(type_def):
     return type_def.text
 
 
-def get_name_prefixes(enum_definitions):
+def get_name_prefixes(enum_definitions, struct_definitions):
     name_prefixes = {}
     for enum_definition in enum_definitions:
         name = enum_definition.name
+        prefix = ODD_PREFIXES.get(name, name.upper() + "_")
+        name_prefixes[name] = prefix
+    for struct_definition in struct_definitions:
+        name = struct_definition.name
         prefix = ODD_PREFIXES.get(name, name.upper() + "_")
         name_prefixes[name] = prefix
     return name_prefixes
@@ -499,7 +541,7 @@ def main():
 
     enum_definitions = get_enums(parse_config_xml('config_8h.xml'))
     struct_definitions = get_structs()
-    name_prefixes = get_name_prefixes(enum_definitions)
+    name_prefixes = get_name_prefixes(enum_definitions, struct_definitions)
 
     if args.type == "all" or args.type == "java":
         generate(JavaGenerator, args.java_output_dir, name_prefixes, enum_definitions, struct_definitions)
