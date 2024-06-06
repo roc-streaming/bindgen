@@ -38,6 +38,7 @@ STRUCTS = [
     'structroc__context__config.xml',
     'structroc__receiver__config.xml',
     'structroc__sender__config.xml',
+    'structroc__interface__config.xml',
     'structroc__media__encoding.xml',
 ]
 
