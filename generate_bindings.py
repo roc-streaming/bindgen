@@ -396,6 +396,7 @@ class GoGenerator(Generator):
                 subsequent_indent = indent_line + "   " \
                     if t.startswith(" - ") else indent_line
 
+                t = t.replace("( ", "(").replace(" )", ")")
                 lines = textwrap.wrap(t, width=80,
                                       break_on_hyphens=False,
                                       initial_indent=indent_line,
