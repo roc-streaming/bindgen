@@ -2,7 +2,6 @@
 
 import argparse
 import os
-import re
 import string
 import subprocess
 import sys
@@ -40,6 +39,12 @@ STRUCTS = [
     'structroc__sender__config.xml',
     'structroc__interface__config.xml',
     'structroc__media__encoding.xml',
+]
+
+CLASSES = [
+    'context_8h.xml',
+    'receiver_8h.xml',
+    'sender_8h.xml',
 ]
 
 
@@ -91,11 +96,27 @@ class StructDefinition:
     doc: DocComment
 
 
+@dataclass
+class ClassMethod:
+    name: string
+    doc: DocComment
+
+
+@dataclass
+class ClassDefinition:
+    name: string
+    methods: list[ClassMethod]
+    doc: DocComment
+
+
 class Generator:
     def generate_enum(self, enum_definition: EnumDefinition, autogen_comment: list[string]):
         raise NotImplementedError
 
     def generate_struct(self, struct_definition: StructDefinition, autogen_comment: list[string]):
+        raise NotImplementedError
+
+    def generate_class(self, class_definition: ClassDefinition, autogen_comment: list[string]):
         raise NotImplementedError
 
 
@@ -182,6 +203,8 @@ class JavaGenerator(Generator):
 
         file.write("}\n")
 
+    def generate_class(self, class_definition: ClassDefinition, autogen_comment: list[string]):
+        print(f"Class generation is not supported yet: {class_definition.name}")
 
     def get_java_enum_value(self, enum_name, enum_value_name):
         prefix = self.name_prefixes.get(enum_name)
@@ -189,13 +212,13 @@ class JavaGenerator(Generator):
 
     def get_java_enum_name(self, roc_enum_name):
         return to_camel_case(roc_enum_name.removeprefix('roc_'))
+
     def get_java_class_name(self, roc_name):
         return to_pascal_case(roc_name.removeprefix('roc_'))
 
     def get_file_path(self, java_name):
         return (self.base_path + "/src/main/java/"
                 + ROC_JAVA_PACKAGE.replace(".", "/") + "/" + java_name + ".java")
-
 
     def get_java_link(self, roc_enum_value_name):
         for roc_enum_name in self.name_prefixes:
@@ -228,7 +251,7 @@ class JavaGenerator(Generator):
         return doc_string
 
     def doc_item_to_string(self, items: list[DocItem]):
-        # TODO: handle "see" DocItem
+        # TODO: handle "see, bold, emphasis" DocItem's
         result = []
         for item in items:
             t = item.type
@@ -320,7 +343,7 @@ class GoGenerator(Generator):
             field_name = to_pascal_case(struct_field.name.lower().removeprefix('roc_'))
             field_type = to_pascal_case(struct_field.type.removeprefix('roc_')) \
                 if struct_field.type.startswith('roc') \
-                   else GO_TYPE_MAP.get(struct_field.type, struct_field.type)
+                else GO_TYPE_MAP.get(struct_field.type, struct_field.type)
 
             if i != 0:
                 struct_file.write("\n")
@@ -330,6 +353,35 @@ class GoGenerator(Generator):
         struct_file.write("}\n")
 
         struct_file.close()
+
+    def generate_class(self, class_definition: ClassDefinition, autogen_comment: list[string]):
+        go_name = class_definition.name.removeprefix('roc_')
+
+        class_file_path = self.base_path + "/roc/" + go_name + ".go"
+        class_file = open(class_file_path, "w")
+
+        go_type_name = to_pascal_case(go_name)
+        for line in autogen_comment:
+            class_file.write("// " + line + "\n")
+        class_file.write("\n")
+        class_file.write("package roc\n\n")
+        class_file.write(self.format_comment(class_definition.doc, ""))
+        class_file.write("//\n")
+
+        class_file.write(f"type {go_type_name} struct {{\n")
+        class_file.write("}\n")
+        class_file.write("\n")
+
+        for method in class_definition.methods:
+            go_method_name = to_pascal_case(method.name.removeprefix(class_definition.name + "_"))
+            if go_method_name == "Open":
+                go_method_name += go_type_name
+            class_file.write(self.format_comment(method.doc, ""))
+            class_file.write(f"func {go_method_name}() {{\n")
+            class_file.write("// TODO: implement; fix signature\n")
+            class_file.write("}\n")
+            class_file.write("\n")
+        class_file.close()
 
     def format_comment(self, doc: DocComment, indent: string):
         indent_line = indent + "// "
@@ -354,7 +406,7 @@ class GoGenerator(Generator):
         result = []
         for item in doc_item:
             t = item.type
-            if t == "text":
+            if t == "text" or t == "bold" or t == "emphasis":
                 result.append(item.text)
             elif t == "ref" or t == "code":
                 result.append(self.ref_to_string(item.text))
@@ -441,7 +493,6 @@ def parse_doc_elem(elem: ElementTree.Element) -> list[DocItem]:
     text = strip_text(elem.text)
     if tag == "para":
         if text:
-            # text = re.sub(' *\n *', ' ', text)
             items.append(DocItem("text", text))
     elif tag == "ref":
         if text:
@@ -455,6 +506,12 @@ def parse_doc_elem(elem: ElementTree.Element) -> list[DocItem]:
     elif tag == "computeroutput":
         if text:
             items.append(DocItem("code", text))
+    elif tag == "bold":
+        if text:
+            items.append(DocItem("bold", text))
+    elif tag == "emphasis":
+        if text:
+            items.append(DocItem("emphasis", text))
     elif tag == "itemizedlist":
         values = []
         for li in elem.findall("listitem"):
@@ -509,6 +566,28 @@ def get_struct_type(type_def):
     return type_def.text
 
 
+def get_classes(doxygen_dir) -> list[ClassDefinition]:
+    class_definitions = []
+    for cls in CLASSES:
+        el = parse_config_xml(doxygen_dir, cls)
+        compound = el.find('.//compounddef')
+
+        typedef = compound.find('sectiondef/memberdef[@kind="typedef"]')
+        name = typedef.find('name').text
+        doc = parse_doc(typedef)
+        methods = []
+
+        print(f"found class in docs: {name}")
+        for member_def in compound.findall('sectiondef/memberdef[@kind="function"]'):
+            method_name = member_def.find('name').text
+            method_doc = parse_doc(member_def)
+            methods.append(ClassMethod(method_name, method_doc))
+
+        class_definitions.append(ClassDefinition(name, methods, doc))
+
+    return class_definitions
+
+
 def get_name_prefixes(enum_definitions, struct_definitions):
     name_prefixes = {}
     for enum_definition in enum_definitions:
@@ -524,9 +603,10 @@ def get_name_prefixes(enum_definitions, struct_definitions):
 
 def generate(generator_construct, toolkit_dir, output_dir, name_prefixes,
              enum_definitions: list[EnumDefinition],
-             struct_definitions: list[StructDefinition]):
+             struct_definitions: list[StructDefinition],
+             class_definitions: list[ClassDefinition]):
     if not os.path.isdir(output_dir):
-        print(f"Directory does not exist: {output_dir}. "+
+        print(f"Directory does not exist: {output_dir}. " +
               "Can't generate bindings {generator_construct.__name__}",
               file=sys.stderr)
         exit(1)
@@ -541,6 +621,8 @@ def generate(generator_construct, toolkit_dir, output_dir, name_prefixes,
         generator.generate_enum(enum_definition, autogen_comment)
     for struct_definition in struct_definitions:
         generator.generate_struct(struct_definition, autogen_comment)
+    for class_definition in class_definitions:
+        generator.generate_class(class_definition, autogen_comment)
 
 
 def main():
@@ -570,15 +652,16 @@ def main():
 
     enum_definitions = get_enums(args.doxygen_dir)
     struct_definitions = get_structs(args.doxygen_dir)
+    class_definitions = get_classes(args.doxygen_dir)
     name_prefixes = get_name_prefixes(enum_definitions, struct_definitions)
 
     if args.type == "all" or args.type == "java":
         generate(JavaGenerator, args.toolkit_dir, args.java_output_dir,
-                 name_prefixes, enum_definitions, struct_definitions)
+                 name_prefixes, enum_definitions, struct_definitions, class_definitions)
 
     if args.type == "all" or args.type == "go":
         generate(GoGenerator, args.toolkit_dir, args.go_output_dir,
-                 name_prefixes, enum_definitions, struct_definitions)
+                 name_prefixes, enum_definitions, struct_definitions, class_definitions)
 
 
 if __name__ == '__main__':
