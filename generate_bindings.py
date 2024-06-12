@@ -393,10 +393,13 @@ class GoGenerator(Generator):
 
             text = self.doc_item_to_string(items)
             for t in text.split("\n"):
+                subsequent_indent = indent_line + "   " \
+                    if t.startswith(" - ") else indent_line
+
                 lines = textwrap.wrap(t, width=80,
                                       break_on_hyphens=False,
                                       initial_indent=indent_line,
-                                      subsequent_indent=indent_line)
+                                      subsequent_indent=subsequent_indent)
                 for line in lines:
                     doc_string += line + "\n"
 
