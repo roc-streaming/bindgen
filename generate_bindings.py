@@ -31,6 +31,35 @@ GO_TYPE_MAP = {
     "long": "int32",
     "unsigned long long": "uint64",
     "long long": "int64",
+    "char": "string",
+}
+
+GO_TYPE_OVERRIDE = {
+    "PacketLength": "time.Duration",
+    "PacketInterleaving": "bool",
+    "TargetLatency": "time.Duration",
+    "LatencyTolerance": "time.Duration",
+    "NoPlaybackTimeout": "time.Duration",
+    "ChoppyPlaybackTimeout": "time.Duration",
+    "ReuseAddress": "bool",
+}
+
+GO_COMMENT_OVERRIDE = {
+    "ContextConfig": """
+        // Context configuration.
+        // You can zero-initialize this struct to get a default config.
+        // See also Context.
+    """,
+    "SenderConfig": """
+        // Sender configuration.
+        // You can zero-initialize this struct to get a default config.
+        // See also Sender.
+    """,
+    "ReceiverConfig": """
+        // Receiver configuration.
+        // You can zero-initialize this struct to get a default config.
+        // See also Receiver.
+    """,
 }
 
 STRUCTS = [
@@ -296,18 +325,24 @@ class GoGenerator(Generator):
         enum_file = open(enum_file_path, "w")
 
         go_type_name = to_pascal_case(go_name)
+
         for line in autogen_comment:
             enum_file.write("// " + line + "\n")
         enum_file.write("\n")
         enum_file.write("package roc\n\n")
-        enum_file.write(self.format_comment(enum_definition.doc, ""))
-        enum_file.write("//\n")
+
+        if go_type_name in GO_COMMENT_OVERRIDE:
+            enum_file.write(textwrap.dedent(GO_COMMENT_OVERRIDE[go_type_name]).lstrip())
+        else:
+            enum_file.write(self.format_comment(enum_definition.doc, ""))
+
         roc_prefix = self.name_prefixes[enum_definition.name]
         go_prefix = to_pascal_case(roc_prefix.lower().removeprefix('roc_').removesuffix('_'))
-        enum_file.write(
-            f"//go:generate stringer -type {go_type_name} -trimprefix {go_prefix} -output {go_name}_string.go\n")
-        enum_file.write(f"type {go_type_name} int\n\n")
+        enum_file.write("//\n")
+        enum_file.write(f"//go:generate stringer")
+        enum_file.write(f" -type {go_type_name} -trimprefix {go_prefix} -output {go_name}_string.go\n")
 
+        enum_file.write(f"type {go_type_name} int\n\n")
         enum_file.write("const (\n")
 
         for i, enum_value in enumerate(enum_values):
@@ -330,20 +365,50 @@ class GoGenerator(Generator):
         struct_file = open(struct_file_path, "w")
 
         go_type_name = to_pascal_case(go_name)
+
+        field_name_map = {}
+        field_type_map = {}
+        for struct_field in struct_fields:
+            field_name = to_pascal_case(struct_field.name.lower().removeprefix('roc_'))
+
+            if struct_field.type.startswith('roc'):
+                field_type = to_pascal_case(struct_field.type.removeprefix('roc_'))
+            elif field_name in GO_TYPE_OVERRIDE:
+                field_type = GO_TYPE_OVERRIDE[field_name]
+            elif struct_field.type in GO_TYPE_MAP:
+                field_type = GO_TYPE_MAP[struct_field.type]
+            else:
+                field_type = struct_field.type
+
+            field_name_map[struct_field.name] = field_name
+            field_type_map[struct_field.name] = field_type
+
+        go_imports = set()
+        for field_type in field_type_map.values():
+            if field_type.startswith("time."):
+                go_imports.add("time")
+
         for line in autogen_comment:
             struct_file.write("// " + line + "\n")
         struct_file.write("\n")
         struct_file.write("package roc\n\n")
-        struct_file.write(self.format_comment(struct_definition.doc, ""))
-        struct_file.write("//\n")
+
+        if go_imports:
+            struct_file.write("import (\n")
+            for imp in sorted(go_imports):
+                struct_file.write("\t\""+imp+"\"\n")
+            struct_file.write(")\n\n")
+
+        if go_type_name in GO_COMMENT_OVERRIDE:
+            struct_file.write(textwrap.dedent(GO_COMMENT_OVERRIDE[go_type_name]).lstrip())
+        else:
+            struct_file.write(self.format_comment(struct_definition.doc, ""))
 
         struct_file.write(f"type {go_type_name} struct {{\n")
 
         for i, struct_field in enumerate(struct_fields):
-            field_name = to_pascal_case(struct_field.name.lower().removeprefix('roc_'))
-            field_type = to_pascal_case(struct_field.type.removeprefix('roc_')) \
-                if struct_field.type.startswith('roc') \
-                else GO_TYPE_MAP.get(struct_field.type, struct_field.type)
+            field_name = field_name_map[struct_field.name]
+            field_type = field_type_map[struct_field.name]
 
             if i != 0:
                 struct_file.write("\n")
@@ -357,7 +422,7 @@ class GoGenerator(Generator):
     def generate_class(self, class_definition: ClassDefinition, autogen_comment: list[string]):
         go_name = class_definition.name.removeprefix('roc_')
 
-        class_file_path = self.base_path + "/roc/" + go_name + ".go"
+        class_file_path = self.base_path + "/roc/" + go_name + "_DUMMY.go"
         class_file = open(class_file_path, "w")
 
         go_type_name = to_pascal_case(go_name)
