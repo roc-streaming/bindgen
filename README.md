@@ -5,8 +5,8 @@ A helper script for generating part of the [language bindings](https://roc-strea
 Run with `--help` for more info.
 
 ```
-usage: generate_bindings.py [-h] -t {all,java,go} [--toolkit_dir TOOLKIT_DIR] [--doxygen_dir DOXYGEN_DIR]
-                            [--go_output_dir GO_OUTPUT_DIR] [--java_output_dir JAVA_OUTPUT_DIR]
+usage: bindgen.py [-h] -t {all,java,go} [--toolkit_dir TOOLKIT_DIR] [--doxygen_dir DOXYGEN_DIR]
+                  [--go_output_dir GO_OUTPUT_DIR] [--java_output_dir JAVA_OUTPUT_DIR]
 
 Generate bindings
 
