@@ -50,7 +50,6 @@ class GoGenerator(BaseGenerator):
 
     def generate_enum(self, enum_definition: EnumDefinition, autogen_comment: list[string]):
         go_name = enum_definition.name.removeprefix('roc_')
-        enum_values = enum_definition.values
 
         enum_file_path = self.base_path + "/roc/" + go_name + ".go"
         enum_file = open(enum_file_path, "w")
@@ -76,7 +75,7 @@ class GoGenerator(BaseGenerator):
         enum_file.write(f"type {go_type_name} int\n\n")
         enum_file.write("const (\n")
 
-        for i, enum_value in enumerate(enum_values):
+        for i, enum_value in enumerate(enum_definition.values):
             go_enum_value = to_pascal_case(enum_value.name.lower().removeprefix('roc_'))
 
             if i != 0:
@@ -90,16 +89,14 @@ class GoGenerator(BaseGenerator):
 
     def generate_struct(self, struct_definition: StructDefinition, autogen_comment: list[string]):
         go_name = struct_definition.name.removeprefix('roc_')
-        struct_fields = struct_definition.fields
+        go_type_name = to_pascal_case(go_name)
 
         struct_file_path = self.base_path + "/roc/" + go_name + ".go"
         struct_file = open(struct_file_path, "w")
 
-        go_type_name = to_pascal_case(go_name)
-
         field_name_map = {}
         field_type_map = {}
-        for struct_field in struct_fields:
+        for struct_field in struct_definition.fields:
             field_name = to_pascal_case(struct_field.name.lower().removeprefix('roc_'))
 
             if struct_field.type.startswith('roc'):
@@ -137,7 +134,7 @@ class GoGenerator(BaseGenerator):
 
         struct_file.write(f"type {go_type_name} struct {{\n")
 
-        for i, struct_field in enumerate(struct_fields):
+        for i, struct_field in enumerate(struct_definition.fields):
             field_name = field_name_map[struct_field.name]
             field_type = field_type_map[struct_field.name]
 
@@ -227,7 +224,19 @@ class GoGenerator(BaseGenerator):
         :param ref_value: enum_value or enum_type, e.g. roc_endpoint or ROC_INTERFACE_CONSOLIDATED
         :return: go value
         """
-        if ref_value.startswith("roc_"):
-            return to_pascal_case(ref_value.removeprefix('roc_'))
+        if ref_value.startswith('roc_'):
+            ref_value = ref_value.removeprefix('roc_')
+
+            if ref_value.endswith('_open()'):
+                # e.g: roc_sender_open() => OpenSender()
+                return 'Open' + to_pascal_case(ref_value.removesuffix('_open()')) + '()'
+
+            if ref_value.endswith('()'):
+                # e.g: roc_sender_write() => Sender.Write()
+                parts = ref_value.split('_', 1)
+                if len(parts) == 2:
+                    return to_pascal_case(parts[0]) + '.' + to_pascal_case(parts[1])
+
+            return to_pascal_case(ref_value)
 
         return to_pascal_case(ref_value.lower().removeprefix('roc_'))

@@ -8,8 +8,74 @@ JAVA_PACKAGE = "org.rocstreaming.roctoolkit"
 
 JAVA_TYPE_MAP = {
     "unsigned int": "int",
+    "int": "int",
+    "unsigned long": "long",
+    "long": "ling",
     "unsigned long long": "long",
+    "long long": "long",
+    "char": "String",
 }
+
+JAVA_TYPE_OVERRIDE = {
+    "packetLength": "Duration",
+    "targetLatency": "Duration",
+    "latencyTolerance": "Duration",
+    "noPlaybackTimeout": "Duration",
+    "choppyPlaybackTimeout": "Duration",
+    "reuseAddress": "boolean",
+}
+
+JAVA_NAME_OVERRIDE = {
+    "roc_context": "RocContext",
+    "roc_sender": "RocSender",
+    "roc_receiver": "RocReceiver",
+    "roc_context_config": "RocContextConfig",
+    "roc_sender_config": "RocSenderConfig",
+    "roc_receiver_config": "RocReceiverConfig",
+}
+
+JAVA_COMMENT_OVERRIDE = {
+    "RocContextConfig": """
+        /**
+         * Context configuration.
+         * <p>
+         * RocContextConfig object can be instantiated with {@link RocContextConfig#builder()}.
+         *
+         * @see RocContext
+         */
+    """,
+    "RocSenderConfig": """
+        /**
+         * Sender configuration.
+         * <p>
+         * RocSenderConfig object can be instantiated with {@link RocSenderConfig#builder()}.
+         *
+         * @see RocSender
+         */
+    """,
+    "RocReceiverConfig": """
+        /**
+         * Receiver configuration.
+         * <p>
+         * RocReceiverConfig object can be instantiated with {@link RocReceiverConfig#builder()}.
+         *
+         * @see RocReceiver
+         */
+    """,
+    "InterfaceConfig": """
+        /**
+         * Interface configuration.
+         * <p>
+         * Sender and receiver can have multiple slots ( {@link Slot} ), and each slot
+         * can be bound or connected to multiple interfaces ( {@link Interface} ).
+         * <p>
+         * Each such interface has its own configuration, defined by this class.
+         * <p>
+         * See {@link RocSender.Configure()}, {@link RocReceiver.Configure()}.
+         */
+    """,
+}
+
 
 class JavaGenerator(BaseGenerator):
 
@@ -19,18 +85,19 @@ class JavaGenerator(BaseGenerator):
 
     def generate_enum(self, enum_definition: EnumDefinition, autogen_comment: list[string]):
         java_name = self.get_java_class_name(enum_definition.name)
-        enum_values = enum_definition.values
-
         enum_file = open(self.get_file_path(java_name), "w")
 
         for line in autogen_comment:
             enum_file.write("// " + line + "\n")
         enum_file.write("\n")
         enum_file.write(f"package {JAVA_PACKAGE};\n\n")
-        enum_file.write(self.format_javadoc(enum_definition.doc, 0))
+        if java_name in JAVA_COMMENT_OVERRIDE:
+            enum_file.write(textwrap.dedent(JAVA_COMMENT_OVERRIDE[java_name]).lstrip())
+        else:
+            enum_file.write(self.format_javadoc(enum_definition.doc, 0))
         enum_file.write("public enum " + java_name + " {\n")
 
-        for enum_value in enum_values:
+        for enum_value in enum_definition.values:
             java_enum_value = self.get_java_enum_value(enum_definition.name, enum_value.name)
             enum_file.write("\n")
             enum_file.write(self.format_javadoc(enum_value.doc, 4))
@@ -47,52 +114,40 @@ class JavaGenerator(BaseGenerator):
 
         enum_file.close()
 
-    def generate_struct(self, struct: StructDefinition, autogen_comment: list[string]):
-        java_name = self.get_java_class_name(struct.name)
-        file = open(self.get_file_path(java_name), "w")
+    def generate_struct(self, struct_definition: StructDefinition, autogen_comment: list[string]):
+        java_name = self.get_java_class_name(struct_definition.name)
+        struct_file = open(self.get_file_path(java_name), "w")
 
         for line in autogen_comment:
-            file.write("// " + line + "\n")
-        file.write("\n")
-        file.write("\n")
-        file.write(f"package {JAVA_PACKAGE};\n\n")
-        file.write("import lombok.*;\n\n")
+            struct_file.write("// " + line + "\n")
+        struct_file.write("\n")
+        struct_file.write(f"package {JAVA_PACKAGE};\n\n")
+        struct_file.write("import java.time.Duration;\n")
+        struct_file.write("import lombok.*;\n\n")
 
-        file.write(self.format_javadoc(struct.doc, 0))
-        file.write("@Getter\n")
-        file.write("@Builder(builderClassName = \"Builder\", toBuilder = true)\n")
-        file.write("@ToString\n")
-        file.write("@EqualsAndHashCode\n")
-        file.write("public class " + java_name + " {\n")
+        if java_name in JAVA_COMMENT_OVERRIDE:
+            struct_file.write(textwrap.dedent(JAVA_COMMENT_OVERRIDE[java_name]).lstrip())
+        else:
+            struct_file.write(self.format_javadoc(struct_definition.doc, 0))
+        struct_file.write("@Getter\n")
+        struct_file.write("@Builder(builderClassName = \"Builder\", toBuilder = true)\n")
+        struct_file.write("@ToString\n")
+        struct_file.write("@EqualsAndHashCode\n")
+        struct_file.write("public class " + java_name + " {\n")
 
-        for f in struct.fields:
-            file.write("\n")
-            file.write(self.format_javadoc(f.doc, 4))
+        for f in struct_definition.fields:
+            struct_file.write("\n")
+            struct_file.write(self.format_javadoc(f.doc, 4))
 
-            field_type = self.get_java_class_name(f.type) \
-                if f.type.startswith('roc') else JAVA_TYPE_MAP.get(f.type, f.type)
-            file.write(f"    private {field_type} {to_camel_case(f.name)};\n")
+            field_type = self.get_field_type(f)
+            struct_file.write(f"    private {field_type} {to_camel_case(f.name)};\n")
 
-        file.write("\n")
-        file.write(f"    public static {java_name}.Builder builder() {{\n")
-        file.write(f"        return new ValidationBuilder();\n")
-        file.write("    }\n")
+        struct_file.write("\n")
+        struct_file.write(f"    public static {java_name}.Builder builder() {{\n")
+        struct_file.write(f"        return new {java_name}Validator();\n")
+        struct_file.write("    }\n")
 
-        file.write("\n")
-        file.write(f"    private static class ValidationBuilder extends {java_name}.Builder {{\n")
-        file.write(f"        @Override\n")
-        file.write(f"        public {java_name} build() {{\n")
-        for f in struct.fields:
-            field_name = to_camel_case(f.name)
-            if (f.type.startswith('roc')):
-                file.write(f"            Check.notNull(super.{field_name}, \"{field_name}\");\n")
-            else:
-                file.write(f"            Check.notNegative(super.{field_name}, \"{field_name}\");\n")
-        file.write(f"            return super.build();\n")
-        file.write("        }\n")
-        file.write("    }\n")
-
-        file.write("}\n")
+        struct_file.write("}\n")
 
     def generate_class(self, class_definition: ClassDefinition, autogen_comment: list[string]):
         print(f"Class generation is not supported yet: {class_definition.name}")
@@ -102,22 +157,66 @@ class JavaGenerator(BaseGenerator):
         return enum_value_name.removeprefix(prefix)
 
     def get_java_enum_name(self, roc_enum_name):
+        if roc_name in JAVA_NAME_OVERRIDE:
+            return JAVA_NAME_OVERRIDE[roc_name]
         return to_camel_case(roc_enum_name.removeprefix('roc_'))
 
     def get_java_class_name(self, roc_name):
+        if roc_name in JAVA_NAME_OVERRIDE:
+            return JAVA_NAME_OVERRIDE[roc_name]
         return to_pascal_case(roc_name.removeprefix('roc_'))
+
+    def get_field_type(self, field):
+        java_field_name = to_camel_case(field.name)
+        if java_field_name in JAVA_TYPE_OVERRIDE:
+            return JAVA_TYPE_OVERRIDE[java_field_name]
+        elif field.type.startswith('roc_'):
+            return self.get_java_class_name(field.type)
+        elif field.type in JAVA_TYPE_MAP:
+            return JAVA_TYPE_MAP[field.type]
+        else:
+            return field.type
 
     def get_file_path(self, java_name):
         return (self.base_path + "/src/main/java/"
                 + JAVA_PACKAGE.replace(".", "/") + "/" + java_name + ".java")
 
-    def get_java_link(self, roc_enum_value_name):
-        for roc_enum_name in self.name_prefixes:
-            prefix = self.name_prefixes.get(roc_enum_name)
-            if roc_enum_value_name.startswith(prefix):
-                java_type = self.get_java_class_name(roc_enum_name)
-                java_enum = self.get_java_enum_value(roc_enum_name, roc_enum_value_name)
-                return f"{java_type}#{java_enum}"
+    def get_java_link(self, ref_value):
+        if ref_value.startswith('roc_'):
+            ref_value = ref_value.removeprefix('roc_')
+
+            if ref_value.endswith('_open()'):
+                # e.g: roc_sender_open() => RocSender()
+                ref_value = ref_value.removesuffix('_open()')
+
+                if f'roc_{ref_value}' in JAVA_NAME_OVERRIDE:
+                    return JAVA_NAME_OVERRIDE[f'roc_{ref_value}'] + '()'
+                else:
+                    return to_pascal_case(ref_value) + '()'
+
+            if ref_value.endswith('()'):
+                # e.g: roc_sender_write() => RocSender#write()
+                parts = ref_value.split('_', 1)
+                if len(parts) == 2:
+                    if f'roc_{parts[0]}' in JAVA_NAME_OVERRIDE:
+                        return JAVA_NAME_OVERRIDE[f'roc_{parts[0]}'] + '#' + to_camel_case(parts[1])
+                    else:
+                        return to_pascal_case(parts[0]) + '#' + to_camel_case(parts[1])
+
+            return to_pascal_case(ref_value)
+
+        if ref_value.startswith('ROC_'):
+            for roc_enum_name in self.name_prefixes:
+                prefix = self.name_prefixes.get(roc_enum_name)
+                if ref_value.startswith(prefix):
+                    java_type = self.get_java_class_name(roc_enum_name)
+                    java_enum = self.get_java_enum_value(roc_enum_name, ref_value)
+                    return f"{java_type}#{java_enum}"
+
+        if ref_value[0].isalpha():
+            return to_camel_case(ref_value.lower())
+
+        return None
 
     def format_javadoc(self, doc: DocComment, indent_size: int):
         indent = " " * indent_size
@@ -130,26 +229,36 @@ class JavaGenerator(BaseGenerator):
                 doc_string += indent + " * <p>\n"
 
             text = self.doc_item_to_string(items)
+            # hack: don't break links
+            text = text.replace("{@link ", "{@link_")
+
             for t in text.split("\n"):
                 lines = textwrap.wrap(t, width=80,
                                       break_on_hyphens=False,
                                       initial_indent=indent_line,
                                       subsequent_indent=indent_line)
                 for line in lines:
+                    # restore space
+                    line = line.replace("{@link_", "{@link ")
                     doc_string += line + "\n"
 
         doc_string += indent + " */\n"
         return doc_string
 
     def doc_item_to_string(self, items: list[DocItem]):
-        # TODO: handle "see, bold, emphasis" DocItem's
         result = []
         for item in items:
             t = item.type
             if t == "text":
                 result.append(item.text)
+            elif t == "bold":
+                result.append(f'<b>{item.text}</b>')
+            elif t == "emphasis":
+                result.append(f'<em>{item.text}</em>')
             elif t == "ref" or t == "code":
                 result.append(self.ref_to_string(item.text) or item.text)
+            elif t == "see":
+                result.append("@see")
             elif t == "list":
                 ul = "<ul>\n"
                 for li in item.values:
@@ -165,9 +274,5 @@ class JavaGenerator(BaseGenerator):
         :param ref_value: enum_value or enum_type, e.g. roc_endpoint or ROC_INTERFACE_CONSOLIDATED
         :return: java link javadoc or None if not found
         """
-        if ref_value.startswith("roc_"):
-            java_name = self.get_java_class_name(ref_value)
-            return "{@link " + java_name + "}"
-
         link = self.get_java_link(ref_value)
-        return "{@link " + link + "}" if link else None
+        return "{@link " + link + "}" if link else ref_value
