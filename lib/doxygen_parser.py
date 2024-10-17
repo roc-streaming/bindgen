@@ -1,7 +1,10 @@
 from .definitions import *
 
+from collections import OrderedDict
+import itertools
 import logging
 import os.path
+import re
 import subprocess
 import sys
 import xml.etree.ElementTree as ElementTree
@@ -23,6 +26,7 @@ _DOXYGEN_CLASSES = [
     'context_8h.xml',
     'receiver_8h.xml',
     'sender_8h.xml',
+    'endpoint_8h.xml',
 ]
 
 
@@ -71,7 +75,7 @@ def _parse_doc_elem(elem: ElementTree.Element) -> list[DocItem]:
             items.append(DocItem("see"))
         else:
             _LOG.warning(
-                f"unknown simplesect kind = {kind}, consider adding it to parse_doc_elem")
+                f"Unknown simplesect kind = {kind}, consider adding it to _parse_doc_elem")
     elif tag == "computeroutput":
         if text:
             items.append(DocItem("code", text))
@@ -82,16 +86,16 @@ def _parse_doc_elem(elem: ElementTree.Element) -> list[DocItem]:
         if text:
             items.append(DocItem("emphasis", text))
     elif tag == "itemizedlist":
-        values = []
+        ch_items = []
         for li in elem.findall("listitem"):
-            li_values = []
+            li_items = []
             for e in li:
-                li_values.extend(_parse_doc_elem(e))
-            values.append(li_values)
-        items.append(DocItem("list", values=values))
+                li_items.extend(_parse_doc_elem(e))
+            ch_items.append(li_items)
+        items.append(DocItem("list", child_items=ch_items))
         parse_children = False
     else:
-        _LOG.warning(f"unknown tag = {tag}, consider adding it to parse_doc_elem")
+        _LOG.warning(f"Unknown tag = {tag}, consider adding it to _parse_doc_elem")
     if parse_children:
         for item in elem:
             items.extend(_parse_doc_elem(item))
@@ -102,7 +106,7 @@ def _parse_doc_elem(elem: ElementTree.Element) -> list[DocItem]:
     return items
 
 
-def _parse_struct_type(type_def) -> str:
+def _parse_struct_type(type_def: ElementTree.Element) -> str:
     """
     type_def could be:
        <type>
@@ -119,13 +123,13 @@ def _parse_struct_type(type_def) -> str:
     return type_def.text
 
 
-def _collect_enums(doxygen_dir) -> list[EnumDefinition]:
+def _parse_enums(doxygen_dir) -> OrderedDict[str, EnumDefinition]:
     root = _load_config_xml(doxygen_dir, 'config_8h.xml')
-    enum_definitions = []
     enum_memberdefs = root.findall('.//sectiondef[@kind="enum"]/memberdef[@kind="enum"]')
+    enum_definitions = OrderedDict()
+
     for member_def in enum_memberdefs:
         name = member_def.find('name').text
-        _LOG.debug(f"Found enum in docs: {name}")
         doc = _parse_doc_comment(member_def)
         values = []
 
@@ -135,13 +139,15 @@ def _collect_enums(doxygen_dir) -> list[EnumDefinition]:
             enum_value_doc = _parse_doc_comment(enum_value)
             values.append(EnumValue(enum_name, value, enum_value_doc))
 
-        enum_definitions.append(EnumDefinition(name, values, doc))
+        _LOG.debug(f"Found enum in docs: {name}")
+        enum_definitions[name] = EnumDefinition(name, values, doc)
 
     return enum_definitions
 
 
-def _collect_structs(doxygen_dir) -> list[StructDefinition]:
-    struct_definitions = []
+def _parse_structs(doxygen_dir) -> OrderedDict[str, StructDefinition]:
+    struct_definitions = OrderedDict()
+
     for struct in _DOXYGEN_STRUCTS:
         el = _load_config_xml(doxygen_dir, struct)
         compound = el.find('.//compounddef')
@@ -150,19 +156,21 @@ def _collect_structs(doxygen_dir) -> list[StructDefinition]:
         doc = _parse_doc_comment(compound)
         fields = []
 
-        _LOG.debug(f"Found struct in docs: {name}")
         for member_def in compound.findall('sectiondef/memberdef[@kind="variable"]'):
             field_name = member_def.find('name').text
             field_type = _parse_struct_type(member_def.find('type'))
             field_doc = _parse_doc_comment(member_def)
             fields.append(StructField(field_name, field_type, field_doc))
 
-        struct_definitions.append(StructDefinition(name, fields, doc))
+        _LOG.debug(f"Found struct in docs: {name}")
+        struct_definitions[name] = StructDefinition(name, fields, doc)
+
     return struct_definitions
 
 
-def _collect_classes(doxygen_dir) -> list[ClassDefinition]:
-    class_definitions = []
+def _parse_classes(doxygen_dir) -> OrderedDict[str, ClassDefinition]:
+    class_definitions = OrderedDict()
+
     for cls in _DOXYGEN_CLASSES:
         el = _load_config_xml(doxygen_dir, cls)
         compound = el.find('.//compounddef')
@@ -172,31 +180,126 @@ def _collect_classes(doxygen_dir) -> list[ClassDefinition]:
         doc = _parse_doc_comment(typedef)
         methods = []
 
-        _LOG.debug(f"Found class in docs: {name}")
         for member_def in compound.findall('sectiondef/memberdef[@kind="function"]'):
             method_name = member_def.find('name').text
             method_doc = _parse_doc_comment(member_def)
             methods.append(ClassMethod(method_name, method_doc))
 
-        class_definitions.append(ClassDefinition(name, methods, doc))
+        _LOG.debug(f"Found class in docs: {name}")
+        class_definitions[name] = ClassDefinition(name, methods, doc)
 
     return class_definitions
 
 
-def _collect_name_prefixes(enum_definitions, struct_definitions) -> dict[str, str]:
-    name_prefixes = {}
-    for enum_definition in enum_definitions:
+def _build_enum_prefixes(enum_definitions, struct_definitions) -> dict[str, str]:
+    enum_prefixes = {}
+
+    for enum_definition in enum_definitions.values():
         name = enum_definition.name
         prefix = _ODD_PREFIXES.get(name, name.upper() + "_")
-        name_prefixes[name] = prefix
-    for struct_definition in struct_definitions:
-        name = struct_definition.name
-        prefix = _ODD_PREFIXES.get(name, name.upper() + "_")
-        name_prefixes[name] = prefix
-    return name_prefixes
+        enum_prefixes[name] = prefix
+
+    return enum_prefixes
 
 
-def _read_git_info(toolkit_dir):
+def _build_struct_fields(struct_definitions) -> dict[str, set[str]]:
+    struct_fields = {}
+
+    for struct_definition in struct_definitions.values():
+        for struct_field in struct_definition.fields:
+            if struct_field.name not in struct_fields:
+                struct_fields[struct_field.name] = set()
+            struct_fields[struct_field.name].add(struct_definition.name)
+
+    return struct_fields
+
+
+def _build_doc_ref(enum_definitions, struct_definitions, class_definitions,
+                   enum_prefixes, struct_fields,
+                   doc_item):
+    name = doc_item.text
+
+    # enum/struct/class name (e.g. "roc_interface")
+    if name in enum_definitions:
+        return DocRef("enum", name)
+    if name in struct_definitions:
+        return DocRef("struct", name)
+    if name in class_definitions:
+        return DocRef("class", name)
+
+    # enum value (e.g. "ROC_INTERFACE_AUDIO_SOURCE")
+    if name.startswith('ROC_'):
+        for enum_name, prefix in enum_prefixes.items():
+            if name.startswith(prefix):
+                value_name = name.removeprefix(prefix)
+                return DocRef("enum_value", name,
+                              enum_name=enum_name,
+                              enum_value_name=value_name)
+
+    # struct field (e.g. "packet_length")
+    if name in struct_fields:
+        return DocRef("struct_field", name)
+
+    # class method (e.g. "roc_sender_write()")
+    m = re.match(r'^(roc_[a-z]+)_([a-z_]+)(\(\))?$', name)
+    if m:
+        class_name, method_name = m.group(1), m.group(2)
+        if class_name in class_definitions:
+            return DocRef("class_method", name,
+                          class_name=class_name,
+                          class_method_name=method_name)
+
+    # another type name (e.g. "roc_slot")
+    if re.match(r'^roc_[a-z_]+$', name):
+        return DocRef("typedef", name)
+
+    return None
+
+
+def _build_doc_refs(enum_definitions, struct_definitions, class_definitions,
+                    enum_prefixes, struct_fields):
+    doc_refs = dict()
+
+    def _visit_item(doc_item):
+        name = doc_item.text
+        if name not in doc_refs:
+            ref = _build_doc_ref(enum_definitions, struct_definitions, class_definitions,
+                                 enum_prefixes, struct_fields,
+                                 doc_item)
+            if ref:
+                doc_refs[name] = ref
+
+    def _visit_items(itemsitems):
+        for items in itemsitems:
+            for item in items:
+                if item.type == "ref" or item.type == "code":
+                    _visit_item(item)
+                elif item.child_items:
+                    _visit_items(item.child_items)
+
+    def _visit_definition(definition):
+        if definition.doc and definition.doc.items:
+            _visit_items(definition.doc.items)
+
+    for enum_definition in enum_definitions.values():
+        _visit_definition(enum_definition)
+        for enum_value in enum_definition.values:
+            _visit_definition(enum_value)
+
+    for struct_definition in struct_definitions.values():
+        _visit_definition(struct_definition)
+        for struct_field in struct_definition.fields:
+            _visit_definition(struct_field)
+
+    for class_definition in class_definitions.values():
+        _visit_definition(class_definition)
+        for class_method in class_definition.methods:
+            _visit_definition(class_method)
+
+    return doc_refs
+
+
+def _read_git_info(toolkit_dir) -> GitInfo:
     git_tag = subprocess.check_output(
         ['git', 'describe', '--tags'], cwd=toolkit_dir).decode('ascii').strip()
     git_commit = subprocess.check_output(
@@ -209,10 +312,21 @@ def _read_git_info(toolkit_dir):
 
 def parse_doxygen(toolkit_dir, doxygen_dir) -> ApiRoot:
     git_info = _read_git_info(toolkit_dir)
-    enum_definitions = _collect_enums(doxygen_dir)
-    struct_definitions = _collect_structs(doxygen_dir)
-    class_definitions = _collect_classes(doxygen_dir)
-    name_prefixes = _collect_name_prefixes(enum_definitions, struct_definitions)
+
+    # parse definitions from doxygen xml
+    enum_definitions = _parse_enums(doxygen_dir)
+    struct_definitions = _parse_structs(doxygen_dir)
+    class_definitions = _parse_classes(doxygen_dir)
+
+    # build indexes
+    enum_prefixes = _build_enum_prefixes(enum_definitions, struct_definitions)
+    struct_fields = _build_struct_fields(struct_definitions)
+    doc_refs = _build_doc_refs(
+        enum_definitions, struct_definitions, class_definitions, enum_prefixes, struct_fields)
 
     return ApiRoot(
-        git_info, enum_definitions, struct_definitions, class_definitions, name_prefixes)
+        git_info,
+        enum_definitions, struct_definitions, class_definitions,
+        enum_prefixes, struct_fields,
+        doc_refs
+    )
