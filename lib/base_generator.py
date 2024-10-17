@@ -9,13 +9,13 @@ class BaseGenerator(metaclass=abc.ABCMeta):
         self._api_root = api_root
 
     def generate_files(self):
-        for enum_definition in self._api_root.enum_definitions:
+        for enum_definition in self._api_root.enum_definitions.values():
             self.generate_enum(enum_definition)
 
-        for struct_definition in self._api_root.struct_definitions:
+        for struct_definition in self._api_root.struct_definitions.values():
             self.generate_struct(struct_definition)
 
-        for class_definition in self._api_root.class_definitions:
+        for class_definition in self._api_root.class_definitions.values():
             self.generate_class(class_definition)
 
     @abc.abstractmethod
