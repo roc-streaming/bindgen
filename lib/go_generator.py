@@ -1,10 +1,14 @@
 from .base_generator import *
 from .definitions import *
 
+import logging
 import string
 import textwrap
 
-GO_TYPE_MAP = {
+
+_LOG = logging.getLogger(__name__)
+
+_GO_TYPE_MAP = {
     "unsigned int": "uint32",
     "int": "int32",
     "unsigned long": "uint32",
@@ -14,7 +18,7 @@ GO_TYPE_MAP = {
     "char": "string",
 }
 
-GO_TYPE_OVERRIDE = {
+_GO_TYPE_OVERRIDE = {
     "PacketLength": "time.Duration",
     "PacketInterleaving": "bool",
     "TargetLatency": "time.Duration",
@@ -24,7 +28,7 @@ GO_TYPE_OVERRIDE = {
     "ReuseAddress": "bool",
 }
 
-GO_COMMENT_OVERRIDE = {
+_GO_COMMENT_OVERRIDE = {
     "ContextConfig": """
         // Context configuration.
         // You can zero-initialize this struct to get a default config.
@@ -42,6 +46,7 @@ GO_COMMENT_OVERRIDE = {
     """,
 }
 
+
 class GoGenerator(BaseGenerator):
 
     def __init__(self, base_path: string, name_prefixes: dict[str, str]):
@@ -52,6 +57,7 @@ class GoGenerator(BaseGenerator):
         go_name = enum_definition.name.removeprefix('roc_')
 
         enum_file_path = self.base_path + "/roc/" + go_name + ".go"
+        _LOG.debug(f"Writing {enum_file_path}")
         enum_file = open(enum_file_path, "w")
 
         go_type_name = to_pascal_case(go_name)
@@ -61,8 +67,8 @@ class GoGenerator(BaseGenerator):
         enum_file.write("\n")
         enum_file.write("package roc\n\n")
 
-        if go_type_name in GO_COMMENT_OVERRIDE:
-            enum_file.write(textwrap.dedent(GO_COMMENT_OVERRIDE[go_type_name]).lstrip())
+        if go_type_name in _GO_COMMENT_OVERRIDE:
+            enum_file.write(textwrap.dedent(_GO_COMMENT_OVERRIDE[go_type_name]).lstrip())
         else:
             enum_file.write(self.format_comment(enum_definition.doc, ""))
 
@@ -92,6 +98,7 @@ class GoGenerator(BaseGenerator):
         go_type_name = to_pascal_case(go_name)
 
         struct_file_path = self.base_path + "/roc/" + go_name + ".go"
+        _LOG.debug(f"Writing {struct_file_path}")
         struct_file = open(struct_file_path, "w")
 
         field_name_map = {}
@@ -101,10 +108,10 @@ class GoGenerator(BaseGenerator):
 
             if struct_field.type.startswith('roc'):
                 field_type = to_pascal_case(struct_field.type.removeprefix('roc_'))
-            elif field_name in GO_TYPE_OVERRIDE:
-                field_type = GO_TYPE_OVERRIDE[field_name]
-            elif struct_field.type in GO_TYPE_MAP:
-                field_type = GO_TYPE_MAP[struct_field.type]
+            elif field_name in _GO_TYPE_OVERRIDE:
+                field_type = _GO_TYPE_OVERRIDE[field_name]
+            elif struct_field.type in _GO_TYPE_MAP:
+                field_type = _GO_TYPE_MAP[struct_field.type]
             else:
                 field_type = struct_field.type
 
@@ -127,8 +134,8 @@ class GoGenerator(BaseGenerator):
                 struct_file.write("\t\""+imp+"\"\n")
             struct_file.write(")\n\n")
 
-        if go_type_name in GO_COMMENT_OVERRIDE:
-            struct_file.write(textwrap.dedent(GO_COMMENT_OVERRIDE[go_type_name]).lstrip())
+        if go_type_name in _GO_COMMENT_OVERRIDE:
+            struct_file.write(textwrap.dedent(_GO_COMMENT_OVERRIDE[go_type_name]).lstrip())
         else:
             struct_file.write(self.format_comment(struct_definition.doc, ""))
 
@@ -151,6 +158,7 @@ class GoGenerator(BaseGenerator):
         go_name = class_definition.name.removeprefix('roc_')
 
         class_file_path = self.base_path + "/roc/" + go_name + "_DUMMY.go"
+        _LOG.debug(f"Writing {class_file_path}")
         class_file = open(class_file_path, "w")
 
         go_type_name = to_pascal_case(go_name)
@@ -216,7 +224,8 @@ class GoGenerator(BaseGenerator):
                 ul += "\n"
                 result.append(ul)
             else:
-                print(f"unknown doc item type = {t}, consider adding it to doc_item_to_string")
+                _LOG.warning(
+                    f"unknown doc item type = {t}, consider adding it to doc_item_to_string")
         return ' '.join(result).replace(" ,", ",").replace(" .", ".")
 
     def ref_to_string(self, ref_value):
