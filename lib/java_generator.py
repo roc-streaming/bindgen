@@ -1,12 +1,16 @@
 from .base_generator import *
 from .definitions import *
 
+import logging
 import string
 import textwrap
 
-JAVA_PACKAGE = "org.rocstreaming.roctoolkit"
 
-JAVA_TYPE_MAP = {
+_LOG = logging.getLogger(__name__)
+
+_JAVA_PACKAGE = "org.rocstreaming.roctoolkit"
+
+_JAVA_TYPE_MAP = {
     "unsigned int": "int",
     "int": "int",
     "unsigned long": "long",
@@ -16,7 +20,7 @@ JAVA_TYPE_MAP = {
     "char": "String",
 }
 
-JAVA_TYPE_OVERRIDE = {
+_JAVA_TYPE_OVERRIDE = {
     "packetLength": "Duration",
     "targetLatency": "Duration",
     "latencyTolerance": "Duration",
@@ -25,7 +29,7 @@ JAVA_TYPE_OVERRIDE = {
     "reuseAddress": "boolean",
 }
 
-JAVA_NAME_OVERRIDE = {
+_JAVA_NAME_OVERRIDE = {
     "roc_context": "RocContext",
     "roc_sender": "RocSender",
     "roc_receiver": "RocReceiver",
@@ -34,7 +38,7 @@ JAVA_NAME_OVERRIDE = {
     "roc_receiver_config": "RocReceiverConfig",
 }
 
-JAVA_COMMENT_OVERRIDE = {
+_JAVA_COMMENT_OVERRIDE = {
     "RocContextConfig": """
         /**
          * Context configuration.
@@ -85,14 +89,17 @@ class JavaGenerator(BaseGenerator):
 
     def generate_enum(self, enum_definition: EnumDefinition, autogen_comment: list[string]):
         java_name = self.get_java_class_name(enum_definition.name)
-        enum_file = open(self.get_file_path(java_name), "w")
+
+        enum_file_path = self.get_file_path(java_name)
+        _LOG.debug(f"Writing {enum_file_path}")
+        enum_file = open(enum_file_path, "w")
 
         for line in autogen_comment:
             enum_file.write("// " + line + "\n")
         enum_file.write("\n")
-        enum_file.write(f"package {JAVA_PACKAGE};\n\n")
-        if java_name in JAVA_COMMENT_OVERRIDE:
-            enum_file.write(textwrap.dedent(JAVA_COMMENT_OVERRIDE[java_name]).lstrip())
+        enum_file.write(f"package {_JAVA_PACKAGE};\n\n")
+        if java_name in _JAVA_COMMENT_OVERRIDE:
+            enum_file.write(textwrap.dedent(_JAVA_COMMENT_OVERRIDE[java_name]).lstrip())
         else:
             enum_file.write(self.format_javadoc(enum_definition.doc, 0))
         enum_file.write("public enum " + java_name + " {\n")
@@ -116,17 +123,20 @@ class JavaGenerator(BaseGenerator):
 
     def generate_struct(self, struct_definition: StructDefinition, autogen_comment: list[string]):
         java_name = self.get_java_class_name(struct_definition.name)
-        struct_file = open(self.get_file_path(java_name), "w")
+
+        struct_file_path = self.get_file_path(java_name)
+        _LOG.debug(f"Writing {struct_file_path}")
+        struct_file = open(struct_file_path, "w")
 
         for line in autogen_comment:
             struct_file.write("// " + line + "\n")
         struct_file.write("\n")
-        struct_file.write(f"package {JAVA_PACKAGE};\n\n")
+        struct_file.write(f"package {_JAVA_PACKAGE};\n\n")
         struct_file.write("import java.time.Duration;\n")
         struct_file.write("import lombok.*;\n\n")
 
-        if java_name in JAVA_COMMENT_OVERRIDE:
-            struct_file.write(textwrap.dedent(JAVA_COMMENT_OVERRIDE[java_name]).lstrip())
+        if java_name in _JAVA_COMMENT_OVERRIDE:
+            struct_file.write(textwrap.dedent(_JAVA_COMMENT_OVERRIDE[java_name]).lstrip())
         else:
             struct_file.write(self.format_javadoc(struct_definition.doc, 0))
         struct_file.write("@Getter\n")
@@ -150,36 +160,36 @@ class JavaGenerator(BaseGenerator):
         struct_file.write("}\n")
 
     def generate_class(self, class_definition: ClassDefinition, autogen_comment: list[string]):
-        print(f"Class generation is not supported yet: {class_definition.name}")
+        _LOG.warning(f"Class generation is not supported yet: {class_definition.name}")
 
     def get_java_enum_value(self, enum_name, enum_value_name):
         prefix = self.name_prefixes.get(enum_name)
         return enum_value_name.removeprefix(prefix)
 
     def get_java_enum_name(self, roc_enum_name):
-        if roc_name in JAVA_NAME_OVERRIDE:
-            return JAVA_NAME_OVERRIDE[roc_name]
+        if roc_name in _JAVA_NAME_OVERRIDE:
+            return _JAVA_NAME_OVERRIDE[roc_name]
         return to_camel_case(roc_enum_name.removeprefix('roc_'))
 
     def get_java_class_name(self, roc_name):
-        if roc_name in JAVA_NAME_OVERRIDE:
-            return JAVA_NAME_OVERRIDE[roc_name]
+        if roc_name in _JAVA_NAME_OVERRIDE:
+            return _JAVA_NAME_OVERRIDE[roc_name]
         return to_pascal_case(roc_name.removeprefix('roc_'))
 
     def get_field_type(self, field):
         java_field_name = to_camel_case(field.name)
-        if java_field_name in JAVA_TYPE_OVERRIDE:
-            return JAVA_TYPE_OVERRIDE[java_field_name]
+        if java_field_name in _JAVA_TYPE_OVERRIDE:
+            return _JAVA_TYPE_OVERRIDE[java_field_name]
         elif field.type.startswith('roc_'):
             return self.get_java_class_name(field.type)
-        elif field.type in JAVA_TYPE_MAP:
-            return JAVA_TYPE_MAP[field.type]
+        elif field.type in _JAVA_TYPE_MAP:
+            return _JAVA_TYPE_MAP[field.type]
         else:
             return field.type
 
     def get_file_path(self, java_name):
         return (self.base_path + "/src/main/java/"
-                + JAVA_PACKAGE.replace(".", "/") + "/" + java_name + ".java")
+                + _JAVA_PACKAGE.replace(".", "/") + "/" + java_name + ".java")
 
     def get_java_link(self, ref_value):
         if ref_value.startswith('roc_'):
@@ -189,8 +199,8 @@ class JavaGenerator(BaseGenerator):
                 # e.g: roc_sender_open() => RocSender()
                 ref_value = ref_value.removesuffix('_open()')
 
-                if f'roc_{ref_value}' in JAVA_NAME_OVERRIDE:
-                    return JAVA_NAME_OVERRIDE[f'roc_{ref_value}'] + '()'
+                if f'roc_{ref_value}' in _JAVA_NAME_OVERRIDE:
+                    return _JAVA_NAME_OVERRIDE[f'roc_{ref_value}'] + '()'
                 else:
                     return to_pascal_case(ref_value) + '()'
 
@@ -198,8 +208,8 @@ class JavaGenerator(BaseGenerator):
                 # e.g: roc_sender_write() => RocSender#write()
                 parts = ref_value.split('_', 1)
                 if len(parts) == 2:
-                    if f'roc_{parts[0]}' in JAVA_NAME_OVERRIDE:
-                        return JAVA_NAME_OVERRIDE[f'roc_{parts[0]}'] + '#' + to_camel_case(parts[1])
+                    if f'roc_{parts[0]}' in _JAVA_NAME_OVERRIDE:
+                        return _JAVA_NAME_OVERRIDE[f'roc_{parts[0]}'] + '#' + to_camel_case(parts[1])
                     else:
                         return to_pascal_case(parts[0]) + '#' + to_camel_case(parts[1])
 
@@ -266,7 +276,8 @@ class JavaGenerator(BaseGenerator):
                 ul += "</ul>\n"
                 result.append(ul)
             else:
-                print(f"unknown doc item type = {t}, consider adding it to doc_item_to_string")
+                _LOG.warning(
+                    f"unknown doc item type = {t}, consider adding it to doc_item_to_string")
         return ' '.join(result).replace(" ,", ",").replace(" .", ".")
 
     def ref_to_string(self, ref_value):

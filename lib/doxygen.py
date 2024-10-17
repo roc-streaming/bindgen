@@ -1,13 +1,16 @@
 from .definitions import *
 
+import logging
 import os.path
 import sys
 import xml.etree.ElementTree as ElementTree
 
 
-ODD_PREFIXES = {'roc_protocol': 'ROC_PROTO_'}
+_LOG = logging.getLogger(__name__)
 
-DOXYGEN_STRUCTS = [
+_ODD_PREFIXES = {'roc_protocol': 'ROC_PROTO_'}
+
+_DOXYGEN_STRUCTS = [
     'structroc__context__config.xml',
     'structroc__receiver__config.xml',
     'structroc__sender__config.xml',
@@ -15,7 +18,7 @@ DOXYGEN_STRUCTS = [
     'structroc__media__encoding.xml',
 ]
 
-DOXYGEN_CLASSES = [
+_DOXYGEN_CLASSES = [
     'context_8h.xml',
     'receiver_8h.xml',
     'sender_8h.xml',
@@ -33,13 +36,14 @@ def _strip_text(text):
 def _parse_config_xml(doxygen_dir, name):
     filepath = os.path.join(doxygen_dir, name)
     try:
+        _LOG.info(f"Parsing {filepath}")
         tree = ElementTree.parse(filepath)
         return tree.getroot()
     except FileNotFoundError:
-        print(f"File not found: {filepath}", file=sys.stderr)
+        _LOG.error(f"File not found: {filepath}")
         exit(1)
     except ElementTree.ParseError:
-        print(f"Error parsing XML file: {filepath}", file=sys.stderr)
+        _LOG.error(f"Error parsing XML file: {filepath}")
         exit(1)
 
 
@@ -70,7 +74,8 @@ def _parse_doc_elem(elem: ElementTree.Element) -> list[DocItem]:
         if kind == "see":
             items.append(DocItem("see"))
         else:
-            print(f"unknown simplesect kind = {kind}, consider adding it to parse_doc_elem")
+            _LOG.warning(
+                f"unknown simplesect kind = {kind}, consider adding it to parse_doc_elem")
     elif tag == "computeroutput":
         if text:
             items.append(DocItem("code", text))
@@ -90,7 +95,7 @@ def _parse_doc_elem(elem: ElementTree.Element) -> list[DocItem]:
         items.append(DocItem("list", values=values))
         parse_children = False
     else:
-        print(f"unknown tag = {tag}, consider adding it to parse_doc_elem")
+        _LOG.warning(f"unknown tag = {tag}, consider adding it to parse_doc_elem")
     if parse_children:
         for item in elem:
             items.extend(_parse_doc_elem(item))
@@ -124,7 +129,7 @@ def traverse_enums(doxygen_dir) -> list[EnumDefinition]:
     enum_memberdefs = root.findall('.//sectiondef[@kind="enum"]/memberdef[@kind="enum"]')
     for member_def in enum_memberdefs:
         name = member_def.find('name').text
-        print(f"found enum in docs: {name}")
+        _LOG.debug(f"Found enum in docs: {name}")
         doc = _parse_doc_comment(member_def)
         values = []
 
@@ -142,7 +147,7 @@ def traverse_enums(doxygen_dir) -> list[EnumDefinition]:
 def traverse_structs(doxygen_dir) -> list[StructDefinition]:
     struct_definitions = []
 
-    for struct in DOXYGEN_STRUCTS:
+    for struct in _DOXYGEN_STRUCTS:
         el = _parse_config_xml(doxygen_dir, struct)
         compound = el.find('.//compounddef')
 
@@ -150,7 +155,7 @@ def traverse_structs(doxygen_dir) -> list[StructDefinition]:
         doc = _parse_doc_comment(compound)
         fields = []
 
-        print(f"found struct in docs: {name}")
+        _LOG.debug(f"Found struct in docs: {name}")
         for member_def in compound.findall('sectiondef/memberdef[@kind="variable"]'):
             field_name = member_def.find('name').text
             field_type = _parse_struct_type(member_def.find('type'))
@@ -163,7 +168,7 @@ def traverse_structs(doxygen_dir) -> list[StructDefinition]:
 
 def traverse_classes(doxygen_dir) -> list[ClassDefinition]:
     class_definitions = []
-    for cls in DOXYGEN_CLASSES:
+    for cls in _DOXYGEN_CLASSES:
         el = _parse_config_xml(doxygen_dir, cls)
         compound = el.find('.//compounddef')
 
@@ -172,7 +177,7 @@ def traverse_classes(doxygen_dir) -> list[ClassDefinition]:
         doc = _parse_doc_comment(typedef)
         methods = []
 
-        print(f"found class in docs: {name}")
+        _LOG.debug(f"Found class in docs: {name}")
         for member_def in compound.findall('sectiondef/memberdef[@kind="function"]'):
             method_name = member_def.find('name').text
             method_doc = _parse_doc_comment(member_def)
@@ -187,10 +192,10 @@ def traverse_name_prefixes(enum_definitions, struct_definitions):
     name_prefixes = {}
     for enum_definition in enum_definitions:
         name = enum_definition.name
-        prefix = ODD_PREFIXES.get(name, name.upper() + "_")
+        prefix = _ODD_PREFIXES.get(name, name.upper() + "_")
         name_prefixes[name] = prefix
     for struct_definition in struct_definitions:
         name = struct_definition.name
-        prefix = ODD_PREFIXES.get(name, name.upper() + "_")
+        prefix = _ODD_PREFIXES.get(name, name.upper() + "_")
         name_prefixes[name] = prefix
     return name_prefixes
