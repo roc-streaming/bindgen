@@ -1,22 +1,31 @@
 from .definitions import *
 
+import abc
 import string
 
 
-def to_pascal_case(name):
-    return ''.join(x.capitalize() for x in name.split('_'))
+class BaseGenerator(metaclass=abc.ABCMeta):
+    def __init__(self, api_root: ApiRoot):
+        self._api_root = api_root
 
+    def generate_files(self):
+        for enum_definition in self._api_root.enum_definitions:
+            self.generate_enum(enum_definition)
 
-def to_camel_case(name):
-    return name[0].lower() + to_pascal_case(name)[1:]
+        for struct_definition in self._api_root.struct_definitions:
+            self.generate_struct(struct_definition)
 
+        for class_definition in self._api_root.class_definitions:
+            self.generate_class(class_definition)
 
-class BaseGenerator:
-    def generate_enum(self, enum_definition: EnumDefinition, autogen_comment: list[string]):
-        raise NotImplementedError
+    @abc.abstractmethod
+    def generate_enum(self, enum_definition: EnumDefinition):
+        pass
 
-    def generate_struct(self, struct_definition: StructDefinition, autogen_comment: list[string]):
-        raise NotImplementedError
+    @abc.abstractmethod
+    def generate_struct(self, struct_definition: StructDefinition):
+        pass
 
-    def generate_class(self, class_definition: ClassDefinition, autogen_comment: list[string]):
-        raise NotImplementedError
+    @abc.abstractmethod
+    def generate_class(self, class_definition: ClassDefinition):
+        pass

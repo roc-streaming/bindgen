@@ -53,3 +53,18 @@ class ClassDefinition:
     name: string
     methods: list[ClassMethod]
     doc: DocComment
+
+
+@dataclass
+class GitInfo:
+    tag: str
+    commit: str
+
+
+@dataclass
+class ApiRoot:
+    git_info: GitInfo
+    enum_definitions: list[EnumDefinition]
+    struct_definitions: list[StructDefinition]
+    class_definitions: list[ClassDefinition]
+    name_prefixes: dict[str, str]

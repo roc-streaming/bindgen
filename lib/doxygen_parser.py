@@ -2,6 +2,7 @@ from .definitions import *
 
 import logging
 import os.path
+import subprocess
 import sys
 import xml.etree.ElementTree as ElementTree
 
@@ -25,15 +26,7 @@ _DOXYGEN_CLASSES = [
 ]
 
 
-def _strip_text(text):
-    if text:
-        strip = text.strip()
-        if strip:
-            return strip
-    return None
-
-
-def _parse_config_xml(doxygen_dir, name):
+def _load_config_xml(doxygen_dir, name):
     filepath = os.path.join(doxygen_dir, name)
     try:
         _LOG.info(f"Parsing {filepath}")
@@ -62,7 +55,10 @@ def _parse_doc_elem(elem: ElementTree.Element) -> list[DocItem]:
     items = []
     tag = elem.tag
     parse_children = True
-    text = _strip_text(elem.text)
+    if elem.text and elem.text.strip():
+        text = elem.text.strip()
+    else:
+        text = None
     if tag == "para":
         if text:
             items.append(DocItem("text", text))
@@ -106,7 +102,7 @@ def _parse_doc_elem(elem: ElementTree.Element) -> list[DocItem]:
     return items
 
 
-def _parse_struct_type(type_def):
+def _parse_struct_type(type_def) -> str:
     """
     type_def could be:
        <type>
@@ -123,8 +119,8 @@ def _parse_struct_type(type_def):
     return type_def.text
 
 
-def traverse_enums(doxygen_dir) -> list[EnumDefinition]:
-    root = _parse_config_xml(doxygen_dir, 'config_8h.xml')
+def _collect_enums(doxygen_dir) -> list[EnumDefinition]:
+    root = _load_config_xml(doxygen_dir, 'config_8h.xml')
     enum_definitions = []
     enum_memberdefs = root.findall('.//sectiondef[@kind="enum"]/memberdef[@kind="enum"]')
     for member_def in enum_memberdefs:
@@ -144,11 +140,10 @@ def traverse_enums(doxygen_dir) -> list[EnumDefinition]:
     return enum_definitions
 
 
-def traverse_structs(doxygen_dir) -> list[StructDefinition]:
+def _collect_structs(doxygen_dir) -> list[StructDefinition]:
     struct_definitions = []
-
     for struct in _DOXYGEN_STRUCTS:
-        el = _parse_config_xml(doxygen_dir, struct)
+        el = _load_config_xml(doxygen_dir, struct)
         compound = el.find('.//compounddef')
 
         name = compound.find('compoundname').text
@@ -166,10 +161,10 @@ def traverse_structs(doxygen_dir) -> list[StructDefinition]:
     return struct_definitions
 
 
-def traverse_classes(doxygen_dir) -> list[ClassDefinition]:
+def _collect_classes(doxygen_dir) -> list[ClassDefinition]:
     class_definitions = []
     for cls in _DOXYGEN_CLASSES:
-        el = _parse_config_xml(doxygen_dir, cls)
+        el = _load_config_xml(doxygen_dir, cls)
         compound = el.find('.//compounddef')
 
         typedef = compound.find('sectiondef/memberdef[@kind="typedef"]')
@@ -188,7 +183,7 @@ def traverse_classes(doxygen_dir) -> list[ClassDefinition]:
     return class_definitions
 
 
-def traverse_name_prefixes(enum_definitions, struct_definitions):
+def _collect_name_prefixes(enum_definitions, struct_definitions) -> dict[str, str]:
     name_prefixes = {}
     for enum_definition in enum_definitions:
         name = enum_definition.name
@@ -199,3 +194,25 @@ def traverse_name_prefixes(enum_definitions, struct_definitions):
         prefix = _ODD_PREFIXES.get(name, name.upper() + "_")
         name_prefixes[name] = prefix
     return name_prefixes
+
+
+def _read_git_info(toolkit_dir):
+    git_tag = subprocess.check_output(
+        ['git', 'describe', '--tags'], cwd=toolkit_dir).decode('ascii').strip()
+    git_commit = subprocess.check_output(
+        ['git', 'rev-parse', '--short', 'HEAD'], cwd=toolkit_dir).decode('ascii').strip()
+
+    _LOG.debug(f"Detected git tag {git_tag}, commit {git_commit}")
+
+    return GitInfo(git_tag, git_commit)
+
+
+def parse_doxygen(toolkit_dir, doxygen_dir) -> ApiRoot:
+    git_info = _read_git_info(toolkit_dir)
+    enum_definitions = _collect_enums(doxygen_dir)
+    struct_definitions = _collect_structs(doxygen_dir)
+    class_definitions = _collect_classes(doxygen_dir)
+    name_prefixes = _collect_name_prefixes(enum_definitions, struct_definitions)
+
+    return ApiRoot(
+        git_info, enum_definitions, struct_definitions, class_definitions, name_prefixes)
