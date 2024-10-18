@@ -2,11 +2,24 @@
 
 A helper script for generating part of the [language bindings](https://roc-streaming.org/toolkit/docs/api/bindings.html) (enums, config structs) for [Roc Toolkit](https://github.com/roc-streaming/roc-toolkit/).
 
-Run with `--help` for more info.
+Dependencies:
+
+* Python 3.9+
+* [typeguard](https://pypi.org/project/typeguard/) (recent version)
+* [colorama](https://pypi.org/project/colorama/)
+
+Install:
 
 ```
-usage: bindgen.py [-h] -t {all,java,go} [--toolkit_dir TOOLKIT_DIR] [--doxygen_dir DOXYGEN_DIR]
-                  [--go_output_dir GO_OUTPUT_DIR] [--java_output_dir JAVA_OUTPUT_DIR]
+pip install --break-system-packages typeguard colorama
+```
+
+Run with `--help` for usage details:
+
+```
+usage: bindgen.py [-h] -t {all,java,go} [--toolkit_dir TOOLKIT_DIR]
+                  [--doxygen_dir DOXYGEN_DIR] [--go_output_dir GO_OUTPUT_DIR]
+                  [--java_output_dir JAVA_OUTPUT_DIR]
 
 Generate bindings
 
@@ -17,7 +30,8 @@ options:
   --toolkit_dir TOOLKIT_DIR
                         Roc Toolkit directory (default: ../roc-toolkit)
   --doxygen_dir DOXYGEN_DIR
-                        Doxygen XML directory (default: <toolkit_dir>/build/docs/public_api/xml)
+                        Doxygen XML directory (default:
+                        <toolkit_dir>/build/docs/public_api/xml)
   --go_output_dir GO_OUTPUT_DIR
                         Go output directory (default: ../roc-go)
   --java_output_dir JAVA_OUTPUT_DIR
