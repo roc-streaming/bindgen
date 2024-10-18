@@ -197,11 +197,11 @@ class GoGenerator(BaseGenerator):
         indent_line = indent + "// "
         doc_string = ""
 
-        for i, items in enumerate(doc.items):
+        for i, block in enumerate(doc.blocks):
             if i != 0:
                 doc_string += indent_line.rstrip() + "\n"
 
-            text = self._doc_item_to_string(items)
+            text = self._doc_block_to_string(block)
             for t in text.split("\n"):
                 subsequent_indent = indent_line + "   " \
                     if t.startswith(" - ") else indent_line
@@ -216,9 +216,9 @@ class GoGenerator(BaseGenerator):
 
         return doc_string
 
-    def _doc_item_to_string(self, doc_item: list[DocItem]):
+    def _doc_block_to_string(self, block: DocBlock):
         result = []
-        for item in doc_item:
+        for item in block.items:
             t = item.type
             if t == "text" or t == "bold" or t == "emphasis":
                 result.append(item.text)
@@ -228,13 +228,13 @@ class GoGenerator(BaseGenerator):
                 result.append('See')
             elif t == "list":
                 ul = "\n"
-                for li in item.child_items:
-                    ul += f" - {self._doc_item_to_string(li)}\n"
+                for li in item.child_blocks:
+                    ul += f" - {self._doc_block_to_string(li)}\n"
                 ul += "\n"
                 result.append(ul)
             else:
                 _LOG.warning(
-                    f"unknown doc item type = {t}, consider adding it to _doc_item_to_string")
+                    f"unknown doc item type = {t}, consider adding it to _doc_block_to_string")
         return ' '.join(result).replace(" ,", ",").replace(" .", ".")
 
     def _doc_ref_to_string(self, ref_value: str):
