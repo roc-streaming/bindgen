@@ -4,6 +4,9 @@ from typing import OrderedDict
 import string
 
 
+# DocRef represents a resolved code reference in doxygen comment.
+# For example, "roc_sender_write()" is resolved to a DocRef with
+# type="class_method" and class_name="roc_sender".
 @dataclass
 class DocRef:
     type: string
@@ -16,18 +19,31 @@ class DocRef:
     class_method_name: string = None
 
 
+# DocItem represents a single formatting unit, e.g. a chunk of bold text
+# a code reference, or just a plain text.
+# Items of some types are hierarchical, e.g. items of type "list" contain
+# children item blocks, one block corresponding to one list element.
 @dataclass
 class DocItem:
     type: string
     text: string = None
-    # presense of this field depends on item type
-    child_items: list[list['DocItem']] = None
+    child_blocks: list['DocBlock'] = None
 
 
+# DocBlock is a sequence of successive items.
+# For example, a block may represent a paragraph or a list element.
+@dataclass
+class DocBlock:
+    items: list[DocItem]
+
+
+
+# DocComment represents a comment for a definition (enum, struct, etc).
+# Comment consists of a list of blocks, each block corresponding to
+# one paragraph.
 @dataclass
 class DocComment:
-    # list of lines, each line is list of items
-    items: list[list[DocItem]]
+    blocks: list[DocBlock]
 
 
 @dataclass

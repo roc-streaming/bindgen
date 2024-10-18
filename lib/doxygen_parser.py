@@ -45,14 +45,15 @@ def _load_config_xml(doxygen_dir, name):
 
 
 def _parse_doc_comment(elem) -> DocComment:
-    items = []
+    blocks = []
+
     brief = elem.find('briefdescription/para')
-    items.append(_parse_doc_elem(brief))
+    blocks.append(DocBlock(_parse_doc_elem(brief)))
 
     for para in elem.findall('detaileddescription/para'):
-        items.append(_parse_doc_elem(para))
+        blocks.append(DocBlock(_parse_doc_elem(para)))
 
-    return DocComment(items)
+    return DocComment(blocks)
 
 
 def _parse_doc_elem(elem: ElementTree.Element) -> list[DocItem]:
@@ -86,23 +87,23 @@ def _parse_doc_elem(elem: ElementTree.Element) -> list[DocItem]:
         if text:
             items.append(DocItem("emphasis", text))
     elif tag == "itemizedlist":
-        ch_items = []
+        child_blocks = []
         for li in elem.findall("listitem"):
             li_items = []
             for e in li:
                 li_items.extend(_parse_doc_elem(e))
-            ch_items.append(li_items)
-        items.append(DocItem("list", child_items=ch_items))
+            child_blocks.append(DocBlock(li_items))
+        items.append(DocItem("list", child_blocks=child_blocks))
         parse_children = False
     else:
         _LOG.warning(f"Unknown tag = {tag}, consider adding it to _parse_doc_elem")
     if parse_children:
-        for item in elem:
-            items.extend(_parse_doc_elem(item))
-            if item.tail:
-                strip = item.tail.strip()
-                if strip:
-                    items.append(DocItem("text", text=strip))
+        for elem_item in elem:
+            items.extend(_parse_doc_elem(elem_item))
+            if elem_item.tail:
+                stripped_tail = elem_item.tail.strip()
+                if stripped_tail:
+                    items.append(DocItem("text", text=stripped_tail))
     return items
 
 
@@ -269,17 +270,18 @@ def _build_doc_refs(enum_definitions, struct_definitions, class_definitions,
             if ref:
                 doc_refs[name] = ref
 
-    def _visit_items(itemsitems):
-        for items in itemsitems:
-            for item in items:
-                if item.type == "ref" or item.type == "code":
-                    _visit_item(item)
-                elif item.child_items:
-                    _visit_items(item.child_items)
+    def _visit_items(doc_items):
+        for item in doc_items:
+            if item.type == "ref" or item.type == "code":
+                _visit_item(item)
+            elif item.child_blocks:
+                for block in item.child_blocks:
+                    _visit_items(block.items)
 
     def _visit_definition(definition):
-        if definition.doc and definition.doc.items:
-            _visit_items(definition.doc.items)
+        if definition.doc:
+            for doc_block in definition.doc.blocks:
+                _visit_items(doc_block.items)
 
     for enum_definition in enum_definitions.values():
         _visit_definition(enum_definition)

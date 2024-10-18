@@ -222,11 +222,11 @@ class JavaGenerator(BaseGenerator):
 
         doc_string = indent + "/**\n"
 
-        for i, items in enumerate(doc.items):
+        for i, block in enumerate(doc.blocks):
             if i != 0:
                 doc_string += indent + " * <p>\n"
 
-            text = self._doc_item_to_string(items)
+            text = self._doc_block_to_string(block)
             # hack: mask spaces to prevent textwrap from breaking inline tags
             # (like {@link ...})
             text = re.sub(r'(\{@[a-z]+)(\s+)(\S+)(\})',
@@ -249,9 +249,9 @@ class JavaGenerator(BaseGenerator):
         doc_string += indent + " */\n"
         return doc_string
 
-    def _doc_item_to_string(self, items: list[DocItem]):
+    def _doc_block_to_string(self, block: DocBlock):
         result = []
-        for item in items:
+        for item in block.items:
             t = item.type
             if t == "text":
                 result.append(item.text)
@@ -265,13 +265,13 @@ class JavaGenerator(BaseGenerator):
                 result.append("@see")
             elif t == "list":
                 ul = "<ul>\n"
-                for li in item.child_items:
-                    ul += f"<li>{self._doc_item_to_string(li)}</li>\n"
+                for li in item.child_blocks:
+                    ul += f"<li>{self._doc_block_to_string(li)}</li>\n"
                 ul += "</ul>\n"
                 result.append(ul)
             else:
                 _LOG.warning(
-                    f"Unknown doc item type = {t}, consider adding it to _doc_item_to_string")
+                    f"Unknown doc item type = {t}, consider adding it to _doc_block_to_string")
         return ' '.join(result).replace(" ,", ",").replace(" .", ".")
 
     def _doc_ref_to_string(self, ref_value: str):
