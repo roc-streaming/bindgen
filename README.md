@@ -8,15 +8,17 @@ Dependencies:
 * [typeguard](https://pypi.org/project/typeguard/) (recent version)
 * [colorama](https://pypi.org/project/colorama/)
 
-Install:
+Prepare venv (script will automatically use it):
 
 ```
-pip install --break-system-packages typeguard colorama
+python3 -m venv env
+env/bin/pip install -r requirements.txt
 ```
 
 Run with `--help` for usage details:
 
 ```
+$ ./bindgen.py --help
 usage: bindgen.py [-h] -t {all,java,go} [--toolkit_dir TOOLKIT_DIR]
                   [--doxygen_dir DOXYGEN_DIR] [--go_output_dir GO_OUTPUT_DIR]
                   [--java_output_dir JAVA_OUTPUT_DIR]
