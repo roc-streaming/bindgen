@@ -159,6 +159,9 @@ class JavaGenerator(BaseGenerator):
             struct_file.write(f"    private {field_type} {field_name};\n")
 
         struct_file.write("\n")
+        struct_file.write(f"    /**\n")
+        struct_file.write(f"     * Construct lombok builder for {{@link {java_name}}}.\n")
+        struct_file.write(f"     */\n")
         struct_file.write(f"    public static {java_name}.Builder builder() {{\n")
         struct_file.write(f"        return new {java_name}Validator();\n")
         struct_file.write("    }\n")
