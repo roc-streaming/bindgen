@@ -65,43 +65,43 @@ class GoGenerator(BaseGenerator):
         go_name = enum_definition.name.removeprefix('roc_')
         go_type_name = to_pascal_case(go_name)
 
-        enum_file_path = self._get_go_path(go_name)
-        _LOG.debug(f"Writing {enum_file_path}")
-        enum_file = open(enum_file_path, "w")
+        out_path = self._get_go_path(go_name)
+        _LOG.debug(f"Writing {out_path}")
+        out_file = open(out_path, "w")
 
         for line in self._autogen_comment:
-            enum_file.write("// " + line + "\n")
-        enum_file.write("\n")
-        enum_file.write("package roc\n\n")
+            out_file.write(f"// {line}\n")
+        out_file.write(f"\n")
 
-        enum_file.write(self._get_go_comment(go_type_name, enum_definition.doc))
+        out_file.write(f"package roc\n\n")
+
+        out_file.write(self._get_go_comment(go_type_name, enum_definition.doc))
         roc_prefix = self._api_root.enum_prefixes[enum_definition.name]
         go_prefix = to_pascal_case(roc_prefix.lower().removeprefix('roc_').removesuffix('_'))
-        enum_file.write("//\n")
-        enum_file.write(f"//go:generate stringer")
-        enum_file.write(f" -type {go_type_name} -trimprefix {go_prefix} -output {go_name}_string.go\n")
+        out_file.write(f"//\n")
+        out_file.write(f"//go:generate stringer")
+        out_file.write(f" -type {go_type_name} -trimprefix {go_prefix} -output {go_name}_string.go\n")
 
-        enum_file.write(f"type {go_type_name} int\n\n")
-        enum_file.write("const (\n")
+        out_file.write(f"type {go_type_name} int\n\n")
+        out_file.write(f"const (\n")
 
         for i, enum_value in enumerate(enum_definition.values):
             go_enum_value = to_pascal_case(enum_value.name.lower().removeprefix('roc_'))
-
             if i != 0:
-                enum_file.write("\n")
-            enum_file.write(self._format_comment(enum_value.doc, "\t"))
-            enum_file.write(f"\t{go_enum_value} {go_type_name} = {enum_value.value}\n")
+                out_file.write(f"\n")
+            out_file.write(self._format_comment(enum_value.doc, "\t"))
+            out_file.write(f"\t{go_enum_value} {go_type_name} = {enum_value.value}\n")
 
-        enum_file.write(")\n")
-        enum_file.close()
+        out_file.write(f")\n")
+        out_file.close()
 
     def generate_struct(self, struct_definition: StructDefinition):
         go_name = struct_definition.name.removeprefix('roc_')
         go_type_name = to_pascal_case(go_name)
 
-        struct_file_path = self._get_go_path(go_name)
-        _LOG.debug(f"Writing {struct_file_path}")
-        struct_file = open(struct_file_path, "w")
+        out_path = self._get_go_path(go_name)
+        _LOG.debug(f"Writing {out_path}")
+        out_file = open(out_path, "w")
 
         field_name_map = {}
         field_type_map = {}
@@ -126,61 +126,62 @@ class GoGenerator(BaseGenerator):
                 go_imports.add("time")
 
         for line in self._autogen_comment:
-            struct_file.write("// " + line + "\n")
-        struct_file.write("\n")
-        struct_file.write("package roc\n\n")
+            out_file.write(f"// {line}\n")
+        out_file.write(f"\n")
+
+        out_file.write(f"package roc\n\n")
 
         if go_imports:
-            struct_file.write("import (\n")
+            out_file.write(f"import (\n")
             for imp in sorted(go_imports):
-                struct_file.write("\t\""+imp+"\"\n")
-            struct_file.write(")\n\n")
+                out_file.write(f"\t\"{imp}\"\n")
+            out_file.write(f")\n\n")
 
-        struct_file.write(self._get_go_comment(go_type_name, struct_definition.doc))
-        struct_file.write(f"type {go_type_name} struct {{\n")
+        out_file.write(self._get_go_comment(go_type_name, struct_definition.doc))
+        out_file.write(f"type {go_type_name} struct {{\n")
 
         for i, struct_field in enumerate(struct_definition.fields):
             field_name = field_name_map[struct_field.name]
             field_type = field_type_map[struct_field.name]
-
             if i != 0:
-                struct_file.write("\n")
-            struct_file.write(self._format_comment(struct_field.doc, "\t"))
-            struct_file.write(f"\t{field_name} {field_type}\n")
+                out_file.write(f"\n")
+            out_file.write(self._format_comment(struct_field.doc, "\t"))
+            out_file.write(f"\t{field_name} {field_type}\n")
 
-        struct_file.write("}\n")
-        struct_file.close()
+        out_file.write(f"}}\n")
+        out_file.close()
 
     def generate_class(self, class_definition: ClassDefinition):
         go_name = class_definition.name.removeprefix('roc_')
         go_type_name = to_pascal_case(go_name)
 
-        class_file_path = self._get_go_path(go_name, dummy=True)
-        _LOG.debug(f"Writing {class_file_path}")
-        class_file = open(class_file_path, "w")
+        out_path = self._get_go_path(go_name, dummy=True)
+        _LOG.debug(f"Writing {out_path}")
+        out_file = open(out_path, "w")
 
         for line in self._autogen_comment:
-            class_file.write("// " + line + "\n")
-        class_file.write("\n")
-        class_file.write("package roc\n\n")
-        class_file.write(self._get_go_comment(go_type_name, class_definition.doc))
-        class_file.write("//\n")
+            out_file.write(f"// {line}\n")
+        out_file.write("\n")
 
-        class_file.write(f"type {go_type_name} struct {{\n")
-        class_file.write("}\n")
-        class_file.write("\n")
+        out_file.write(f"package roc\n\n")
+
+        out_file.write(self._get_go_comment(go_type_name, class_definition.doc))
+        out_file.write(f"//\n")
+        out_file.write(f"type {go_type_name} struct {{\n")
+        out_file.write(f"}}\n")
+        out_file.write(f"\n")
 
         for method in class_definition.methods:
             go_method_name = to_pascal_case(method.name.removeprefix(class_definition.name + "_"))
             if go_method_name == "Open":
                 go_method_name += go_type_name
-            class_file.write(self._format_comment(method.doc, ""))
-            class_file.write(f"func {go_method_name}() {{\n")
-            class_file.write("// TODO: implement; fix signature\n")
-            class_file.write("}\n")
-            class_file.write("\n")
+            out_file.write(self._format_comment(method.doc, ""))
+            out_file.write(f"func {go_method_name}() {{\n")
+            out_file.write(f"// TODO: implement; fix signature\n")
+            out_file.write(f"}}\n")
+            out_file.write(f"\n")
 
-        class_file.close()
+        out_file.close()
 
     def _get_go_path(self, go_name, dummy=False):
         if dummy:
