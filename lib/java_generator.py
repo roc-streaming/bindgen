@@ -81,7 +81,7 @@ _JAVA_COMMENT_OVERRIDE = {
          * <p>
          * Each such interface has its own configuration, defined by this class.
          * <p>
-         * See {@link RocSender.Configure()}, {@link RocReceiver.Configure()}.
+         * See {@link RocSender#configure()}, {@link RocReceiver#configure()}.
          */
     """,
 }
@@ -316,26 +316,8 @@ class JavaGenerator(BaseGenerator):
         for i, block in enumerate(doc.blocks):
             if i != 0:
                 doc_string += indent + " * <p>\n"
-
-            text = self._doc_block_to_string(block)
-            # hack: mask spaces to prevent textwrap from breaking inline tags
-            # (like {@link ...})
-            text = re.sub(r'(\{@[a-z]+)(\s+)(\S+)(\})',
-                          r'\1_\3\4',
-                          text, flags=re.MULTILINE)
-
-            for t in text.split("\n"):
-                lines = textwrap.wrap(t, width=80,
-                                      break_on_hyphens=False,
-                                      initial_indent=indent_line,
-                                      subsequent_indent=indent_line)
-                for line in lines:
-                    # restore spaces
-                    line = re.sub(r'(\{@[a-z]+)(_)(\S+)(\})',
-                                  r'\1 \3\4',
-                                  line)
-
-                    doc_string += line + "\n"
+            doc_string += self._wrap_text(self._doc_block_to_string(block),
+                                          indent_line)
 
         doc_string += indent + " */\n"
         return doc_string
@@ -355,9 +337,12 @@ class JavaGenerator(BaseGenerator):
             elif t == "see":
                 result.append("@see")
             elif t == "list":
-                ul = "<ul>\n"
+                ul = "\n<ul>\n"
                 for li in item.child_blocks:
-                    ul += f"<li>{self._doc_block_to_string(li)}</li>\n"
+                    ul += self._wrap_text(self._doc_block_to_string(li),
+                                          "  <li>",
+                                          "      ",
+                                          "</li>\n")
                 ul += "</ul>\n"
                 result.append(ul)
             else:
@@ -406,3 +391,53 @@ class JavaGenerator(BaseGenerator):
             return "{@link " + ref_link + "}"
         else:
             return "{@code " + ref_code + "}"
+
+    def _wrap_text(self, text, indent, initial_indent=None, suffix=None):
+        if not initial_indent:
+            initial_indent = indent
+
+        if suffix:
+            text += suffix
+
+        # hack: mask spaces to prevent textwrap from breaking inline tags
+        # (like {@link ...})
+        text = re.sub(r'(\{@[a-z]+)(\s+)(\S+)(\})',
+                      r'\1_\3\4',
+                      text, flags=re.MULTILINE)
+
+        # iterate segments
+        result = ''
+        while text:
+            m = re.match(r'^(.*)([\n\s]*<ul>.*?</ul>[\n\s]*)(.*)$', text, re.DOTALL)
+            if m:
+                # next segment of regular text (should be wrapped)
+                text_segment = m.group(1)
+                # next segment of html list (should be kept as is)
+                list_segment = m.group(2)
+                text = m.group(3)
+            else:
+                text_segment = text
+                list_segment = ''
+                text = ''
+
+            if text_segment:
+                lines = textwrap.wrap(text_segment,
+                                      width=100-len(indent),
+                                      break_on_hyphens=False,
+                                      break_long_words=False,
+                                      initial_indent=indent,
+                                      subsequent_indent=initial_indent)
+                for line in lines:
+                    result += line + "\n"
+
+            if list_segment:
+                lines = list_segment.splitlines()
+                for line in lines:
+                    result += indent + line + "\n"
+
+        # unhack: restore spaces
+        result = re.sub(r'(\{@[a-z]+)(_)(\S+)(\})',
+                        r'\1 \3\4',
+                        result)
+
+        return result
