@@ -22,6 +22,10 @@ _JAVA_TYPE_MAP = {
     "char": "String",
 }
 
+_JAVA_PSEUDO_ENUMS = [
+    "roc_packet_encoding",
+]
+
 _JAVA_TYPE_OVERRIDE = {
     "packetLength": "Duration",
     "targetLatency": "Duration",
@@ -97,83 +101,167 @@ class JavaGenerator(BaseGenerator):
         ]
 
     def generate_enum(self, enum_definition: EnumDefinition):
+        if enum_definition.name in _JAVA_PSEUDO_ENUMS:
+            self.generate_pseudo_enum(enum_definition)
+        else:
+            self.generate_java_enum(enum_definition)
+
+    def generate_java_enum(self, enum_definition: EnumDefinition):
         java_name = self._get_java_enum_name(enum_definition.name)
         java_comment = self._get_java_comment(java_name, enum_definition.doc)
 
-        enum_file_path = self._get_java_path(java_name)
-        _LOG.debug(f"Writing {enum_file_path}")
-        enum_file = open(enum_file_path, "w")
+        out_path = self._get_java_path(java_name)
+        _LOG.debug(f"Writing {out_path}")
+        out_file = open(out_path, "w")
 
         for line in self._autogen_comment:
-            enum_file.write("// " + line + "\n")
-        enum_file.write("\n")
-        enum_file.write(f"package {_JAVA_PACKAGE};\n\n")
-        enum_file.write(java_comment)
-        enum_file.write("public enum " + java_name + " {\n")
+            out_file.write(f"// {line}\n")
+        out_file.write(f"\n")
+
+        out_file.write(f"package {_JAVA_PACKAGE};\n\n")
+
+        out_file.write(java_comment)
+        out_file.write(f"public enum {java_name} {{\n")
 
         for enum_value in enum_definition.values:
             java_enum_value = self._get_java_enum_value_name(enum_definition.name, enum_value.name)
-            enum_file.write("\n")
-            enum_file.write(self._format_javadoc(enum_value.doc, 4))
-            enum_file.write("    " + java_enum_value + "(" + enum_value.value + "),\n")
+            out_file.write(f"\n")
+            out_file.write(self._format_javadoc(enum_value.doc, 4))
+            out_file.write(f"    {java_enum_value}({enum_value.value}),\n")
 
-        enum_file.write("    ;\n\n")
+        out_file.write(f"    ;\n\n")
 
-        enum_file.write("    final int value;\n\n")
+        out_file.write(f"    final int value;\n\n")
 
-        enum_file.write("    " + java_name + "(int value) {\n")
-        enum_file.write("        this.value = value;\n")
-        enum_file.write("    }\n")
-        enum_file.write("}\n")
+        out_file.write(f"    {java_name}(int value) {{\n")
+        out_file.write(f"        this.value = value;\n")
+        out_file.write(f"    }}\n")
 
-        enum_file.close()
+        out_file.write(f"}}\n")
+        out_file.close()
+
+    def generate_pseudo_enum(self, enum_definition: EnumDefinition):
+        java_name = self._get_java_enum_name(enum_definition.name)
+        java_comment = self._get_java_comment(java_name, enum_definition.doc)
+
+        out_path = self._get_java_path(java_name)
+        _LOG.debug(f"Writing {out_path}")
+        out_file = open(out_path, "w")
+
+        for line in self._autogen_comment:
+            out_file.write(f"// {line}\n")
+        out_file.write(f"\n")
+
+        out_file.write(f"package {_JAVA_PACKAGE};\n\n")
+
+        out_file.write(f"import lombok.EqualsAndHashCode;\n\n")
+
+        out_file.write(java_comment)
+        out_file.write(f"@EqualsAndHashCode\n")
+        out_file.write(f"public class {java_name} {{\n")
+
+        for enum_value in enum_definition.values:
+            java_enum_value = self._get_java_enum_value_name(enum_definition.name, enum_value.name)
+            out_file.write(f"\n")
+            out_file.write(self._format_javadoc(enum_value.doc, 4))
+            out_file.write(
+                f"    static {java_name} {java_enum_value} = new {java_name}({enum_value.value});\n")
+
+        out_file.write(f"\n")
+        out_file.write(f"    final int value;\n\n")
+
+        out_file.write(f"    public {java_name}(int value) {{\n")
+        out_file.write(f"        this.value = value;\n")
+        out_file.write(f"    }}\n\n")
+
+        out_file.write(f"    public int getValue() {{\n")
+        out_file.write(f"        return value;\n")
+        out_file.write(f"    }}\n\n")
+
+        out_file.write(f"    @Override\n")
+        out_file.write(f"    public String toString() {{\n")
+        out_file.write(f"        return \"{java_name}(\" + value + \")\";\n")
+        out_file.write(f"    }}\n\n")
+
+        out_file.write(f"}}\n")
+        out_file.close()
 
     def generate_struct(self, struct_definition: StructDefinition):
         java_name = self._get_java_struct_name(struct_definition.name)
         java_comment = self._get_java_comment(java_name, struct_definition.doc)
 
-        struct_file_path = self._get_java_path(java_name)
-        _LOG.debug(f"Writing {struct_file_path}")
-        struct_file = open(struct_file_path, "w")
+        out_path = self._get_java_path(java_name)
+        _LOG.debug(f"Writing {out_path}")
+        out_file = open(out_path, "w")
 
         for line in self._autogen_comment:
-            struct_file.write("// " + line + "\n")
-        struct_file.write("\n")
-        struct_file.write(f"package {_JAVA_PACKAGE};\n\n")
-        struct_file.write("import java.time.Duration;\n")
-        struct_file.write("import lombok.*;\n\n")
+            out_file.write(f"// {line}\n")
+        out_file.write(f"\n")
 
-        struct_file.write(java_comment)
-        struct_file.write("@Getter\n")
-        struct_file.write("@Builder(builderClassName = \"Builder\", toBuilder = true)\n")
-        struct_file.write("@ToString\n")
-        struct_file.write("@EqualsAndHashCode\n")
-        struct_file.write("public class " + java_name + " {\n")
+        out_file.write(f"package {_JAVA_PACKAGE};\n\n")
+
+        out_file.write(f"import java.time.Duration;\n")
+        out_file.write(f"import lombok.*;\n\n")
+
+        out_file.write(java_comment)
+        out_file.write(f"@Getter\n")
+        out_file.write(f"@Builder(builderClassName = \"Builder\", toBuilder = true)\n")
+        out_file.write(f"@ToString\n")
+        out_file.write(f"@EqualsAndHashCode\n")
+        out_file.write(f"public class {java_name} {{\n")
 
         for f in struct_definition.fields:
-            struct_file.write("\n")
-            struct_file.write(self._format_javadoc(f.doc, 4))
-
+            out_file.write(f"\n")
+            out_file.write(self._format_javadoc(f.doc, 4))
             field_type = self._get_java_struct_field_type(f)
             field_name = self._get_java_struct_field_name(f.name)
-            struct_file.write(f"    private {field_type} {field_name};\n")
+            out_file.write(f"    private {field_type} {field_name};\n")
 
-        struct_file.write("\n")
-        struct_file.write(f"    /**\n")
-        struct_file.write(f"     * Construct lombok builder for {{@link {java_name}}}.\n")
-        struct_file.write(f"     */\n")
-        struct_file.write(f"    public static {java_name}.Builder builder() {{\n")
-        struct_file.write(f"        return new {java_name}Validator();\n")
-        struct_file.write("    }\n")
+        out_file.write(f"\n")
+        out_file.write(f"    /**\n")
+        out_file.write(f"     * Construct lombok builder for {{@link {java_name}}}.\n")
+        out_file.write(f"     */\n")
+        out_file.write(f"    public static {java_name}.Builder builder() {{\n")
+        out_file.write(f"        return new {java_name}Validator();\n")
+        out_file.write(f"    }}\n")
 
-        struct_file.write("}\n")
-        struct_file.close()
+        out_file.write(f"}}\n")
+        out_file.close()
 
     def generate_class(self, class_definition: ClassDefinition):
-        _LOG.warning(f"Class generation is not supported yet: {class_definition.name}")
-        # TODO: implement this
+        java_name = self._get_java_struct_name(class_definition.name)
+        java_comment = self._get_java_comment(java_name, class_definition.doc)
 
-    def _get_java_path(self, java_name):
+        out_path = self._get_java_path(java_name, dummy=True)
+        _LOG.debug(f"Writing {out_path}")
+        out_file = open(out_path, "w")
+
+        for line in self._autogen_comment:
+            out_file.write(f"// {line}\n")
+        out_file.write(f"\n")
+
+        out_file.write(f"package {_JAVA_PACKAGE};\n\n")
+
+        out_file.write(java_comment)
+        out_file.write(f"public class Roc{java_name} {{\n")
+
+        for method in class_definition.methods:
+            java_method_name = to_camel_case(method.name.removeprefix(class_definition.name + "_"))
+            java_method_comment = self._format_javadoc(method.doc, 4)
+            if java_method_name in ["open", "close"]:
+                continue
+            out_file.write(f"\n")
+            out_file.write(java_method_comment)
+            out_file.write(f"    public void {java_method_name}() {{\n")
+            out_file.write(f"        // TODO: implement; fix signature\n")
+            out_file.write(f"    }}\n")
+
+        out_file.write(f"}}\n")
+        out_file.close()
+
+    def _get_java_path(self, java_name, dummy=False):
+        if dummy:
+            java_name += "_DUMMY"
         return (self._base_path + "/src/main/java/"
                 + _JAVA_PACKAGE.replace(".", "/") + "/" + java_name + ".java")
 
