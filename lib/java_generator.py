@@ -219,7 +219,7 @@ class JavaGenerator(BaseGenerator):
 
         out_file.write(f"\n")
         out_file.write(f"    /**\n")
-        out_file.write(f"     * Construct lombok builder for {{@link {java_name}}}.\n")
+        out_file.write(f"     * Construct builder for {{@link {java_name}}}.\n")
         out_file.write(f"     */\n")
         out_file.write(f"    public static {java_name}.Builder builder() {{\n")
         out_file.write(f"        return new {java_name}Validator();\n")
