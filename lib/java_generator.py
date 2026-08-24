@@ -165,7 +165,8 @@ class JavaGenerator(BaseGenerator):
             out_file.write(f"\n")
             out_file.write(self._format_javadoc(enum_value.doc, 4))
             out_file.write(
-                f"    static {java_name} {java_enum_value} = new {java_name}({enum_value.value});\n")
+                f"    public static final {java_name} {java_enum_value}" +
+                f" = new {java_name}({enum_value.value});\n")
 
         out_file.write(f"\n")
         out_file.write(f"    final int value;\n\n")
