@@ -79,7 +79,7 @@ class GoGenerator(BaseGenerator):
         roc_prefix = self._api_root.enum_prefixes[enum_definition.name]
         go_prefix = to_pascal_case(roc_prefix.lower().removeprefix('roc_').removesuffix('_'))
         out_file.write(f"//\n")
-        out_file.write(f"//go:generate stringer")
+        out_file.write(f"//go:generate go run golang.org/x/tools/cmd/stringer")
         out_file.write(f" -type {go_type_name} -trimprefix {go_prefix} -output {go_name}_string.go\n")
 
         out_file.write(f"type {go_type_name} int\n\n")
